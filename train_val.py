@@ -18,9 +18,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 print(torch.cuda.get_device_name(device))
 
+with open("./data/haute_garonne_other/dataset_species_labels.json") as file:
+    species_labels = json.load(file)
+
 BATCH_SIZE = 128
 NUM_WORKERS = 16
 NUM_EPOCHS = 16
+NUM_SPECIES = len(species_labels.keys())
 
 
 class CustomDataset(Dataset):
@@ -49,8 +53,7 @@ class CustomDataset(Dataset):
         return image, label
 
 
-with open("./data/haute_garonne_other/dataset_species_labels.json") as file:
-    species_labels = json.load(file)
+
 
 
 transform_train = transforms.Compose(
@@ -82,8 +85,7 @@ train_loader = DataLoader(
 
 model = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT)
 
-num_species = 17
-model.classifier[3] = nn.Linear(model.classifier[3].in_features, num_species)
+model.classifier[3] = nn.Linear(model.classifier[3].in_features, NUM_SPECIES)
 model = model.to(device)
 
 criterion = nn.CrossEntropyLoss()
