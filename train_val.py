@@ -21,9 +21,9 @@ print(torch.cuda.get_device_name(device))
 with open("./data/haute_garonne_other/dataset_species_labels.json") as file:
     species_labels = json.load(file)
 
-BATCH_SIZE = 128
-NUM_WORKERS = 16
-NUM_EPOCHS = 16
+BATCH_SIZE = 64
+NUM_WORKERS = 12
+NUM_EPOCHS = 15
 NUM_SPECIES = len(species_labels.keys())
 
 
