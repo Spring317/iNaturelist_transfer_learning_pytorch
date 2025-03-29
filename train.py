@@ -12,7 +12,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 print(torch.cuda.get_device_name(device))
 
-with open("./data/haute_garonne_other/dataset_species_labels.json") as file:
+with open("./data/haute_garonne/dataset_species_labels.json") as file:
     species_labels = json.load(file)
 
 BATCH_SIZE = 64
@@ -33,7 +33,7 @@ transform_train = transforms.Compose(
 )
 
 train_dataset = CustomDataset(
-    txt_file="./data/haute_garonne_other/train.txt",
+    data_path="./data/haute_garonne/train.parquet",
     root_dir=".",
     transform=transform_train,
 )
