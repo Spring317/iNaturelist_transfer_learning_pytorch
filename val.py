@@ -16,7 +16,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 print(torch.cuda.get_device_name(device))
 
-with open("./data/haute_garonne_other/dataset_species_labels.json") as file:
+with open("./data/haute_garonne/dataset_species_labels.json") as file:
     species_labels = json.load(file)
 
 species_names = list(species_labels.values())
@@ -40,7 +40,7 @@ transform_val = transforms.Compose(
 )
 
 val_dataset = CustomDataset(
-    txt_file="./data/haute_garonne_other/val.txt", root_dir=".", transform=transform_val
+    data_path="./data/haute_garonne/val.parquet", root_dir=".", transform=transform_val
 )
 
 val_loader = DataLoader(
@@ -52,7 +52,7 @@ val_loader = DataLoader(
 )
 
 model = model_builder(models, NUM_SPECIES, device, is_eval=True)
-model.load_state_dict(torch.load("./mobilenet_v3_large_80.pth", map_location=device))
+model.load_state_dict(torch.load("./mobilenet_v3_large_90.pth", map_location=device))
 
 model.eval()
 
@@ -78,5 +78,6 @@ print(f"Weighted Recall: {weighted_recall:.4f}")
 print(f"Weighted Average F1-Score: {f1:.4f}")
 report_dict = classification_report(all_labels, all_preds,target_names=species_names, digits=4, output_dict=True)
 report_df = pd.DataFrame(report_dict).transpose()
-sorted_report_df = report_df.sort_values(by="f1-score")
-print(sorted_report_df)
+# sorted_report_df = report_df.sort_values(by="f1-score")
+with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
+    print(report_df)
