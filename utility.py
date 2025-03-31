@@ -4,6 +4,7 @@ import pandas as pd
 from torch.utils.data import Dataset  # type: ignore
 from PIL import Image  # type: ignore
 from typing import List, Tuple
+from dataset_builder.core.utility import load_manifest_parquet
 
 class CustomDataset(Dataset):
     def __init__(self, data_path, root_dir, transform=None):
@@ -37,13 +38,4 @@ def model_builder(models, num_species, device, is_eval=False):
         model = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT)
 
     model.classifier[3] = nn.Linear(model.classifier[3].in_features, num_species)
-    model = model.to(device)
     return model
-
-
-def load_manifest_parquet(path: str) -> List[Tuple[str, int]]:
-    """
-    Loads a Parquet dataset manifest and returns it as a list of tuples.
-    """
-    df = pd.read_parquet(path)
-    return list(df.itertuples(index=False, name=None))
