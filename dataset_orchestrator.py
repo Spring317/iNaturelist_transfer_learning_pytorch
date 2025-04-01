@@ -79,62 +79,62 @@ try:
     #         base_url, web_crawl_output_path, delay, total_pages, overwrite, verbose
     #     ),
     # )
-    run_stage(
-        "Getting datasets properties",
-        lambda: run_analyze_dataset(
-            web_crawl_output_path,
-            output_path,
-            dst_dataset_name,
-            target_classes,
-            verbose,
-            overwrite,
-        ),
-    )
-    run_stage(
-        "Getting datasets properties",
-        lambda: run_analyze_dataset(
-            src_dataset_path,
-            output_path,
-            src_dataset_name,
-            target_classes,
-            verbose,
-            overwrite,
-        ),
-    )
-    run_stage(
-        "Matching species between datasets",
-        lambda: run_cross_reference(
-            matched_species_path,
-            src_dataset_json,
-            web_crawl_output_path,
-            src_dataset_name,
-            dst_dataset_name,
-            target_classes,
-            verbose,
-            overwrite,
-        ),
-    )
-    run_stage(
-        "Copying matching species",
-        lambda: run_copy_matched_species(
-            src_dataset_path,
-            dst_dataset_path,
-            matched_species_path,
-            target_classes,
-            verbose,
-        ),
-    )
-    run_stage(
-        "Getting datasets properties",
-        lambda: run_analyze_dataset(
-            dst_dataset_path,
-            output_path,
-            dst_dataset_name,
-            target_classes,
-            verbose,
-            True,
-        ),
-    )
+    # run_stage(
+    #     "Getting datasets properties",
+    #     lambda: run_analyze_dataset(
+    #         web_crawl_output_path,
+    #         output_path,
+    #         dst_dataset_name,
+    #         target_classes,
+    #         verbose,
+    #         overwrite,
+    #     ),
+    # )
+    # run_stage(
+    #     "Getting datasets properties",
+    #     lambda: run_analyze_dataset(
+    #         src_dataset_path,
+    #         output_path,
+    #         src_dataset_name,
+    #         target_classes,
+    #         verbose,
+    #         overwrite,
+    #     ),
+    # )
+    # run_stage(
+    #     "Matching species between datasets",
+    #     lambda: run_cross_reference(
+    #         matched_species_path,
+    #         src_dataset_json,
+    #         web_crawl_output_path,
+    #         src_dataset_name,
+    #         dst_dataset_name,
+    #         target_classes,
+    #         verbose,
+    #         overwrite,
+    #     ),
+    # )
+    # run_stage(
+    #     "Copying matching species",
+    #     lambda: run_copy_matched_species(
+    #         src_dataset_path,
+    #         dst_dataset_path,
+    #         matched_species_path,
+    #         target_classes,
+    #         verbose,
+    #     ),
+    # )
+    # run_stage(
+    #     "Getting datasets properties",
+    #     lambda: run_analyze_dataset(
+    #         dst_dataset_path,
+    #         output_path,
+    #         dst_dataset_name,
+    #         target_classes,
+    #         verbose,
+    #         True,
+    #     ),
+    # )
     run_stage(
         "Generating dataset manifests",
         lambda: run_manifest_generator(

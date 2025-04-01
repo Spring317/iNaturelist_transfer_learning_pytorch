@@ -10,6 +10,8 @@ from torchvision import models, transforms  # type: ignore
 from dataset_builder.core import load_config
 from utility import CustomDataset, model_builder
 
+os.system("python dataset_orchestrator.py")
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 print(torch.cuda.get_device_name(device))
@@ -149,7 +151,7 @@ for epoch in range(NUM_EPOCHS):
         f"Train Loss: {train_epoch_loss:.4f}, Train Acc: {train_epoch_acc:.4f}, "
         f"Val Loss: {val_epoch_loss:.4f}, Val Acc: {val_epoch_acc:.4f}"
     )
-    print(f"Epoch time: {end - start}s")
+    print(f"[Epoch {epoch + 1}] Time: {end - start}s")
 
     print("Saving model")
     torch.save(model, f"./models/mobilenet_v3_large_{DOM_THRESHOLD * 100:.0f}.pth")
