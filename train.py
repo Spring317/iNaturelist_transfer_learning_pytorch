@@ -21,7 +21,7 @@ config = load_config("./config.yaml")
 
 BATCH_SIZE = 64
 NUM_WORKERS = 12
-NUM_EPOCHS = 15
+NUM_EPOCHS = 30
 NUM_SPECIES = len(species_labels.keys())
 DOM_THRESHOLD = config["train_val_split"]["dominant_threshold"]
 
@@ -118,7 +118,7 @@ for epoch in range(NUM_EPOCHS):
         train_loss += loss.item() * images.size(0)
         _, preds = torch.max(outputs, 1)
         train_correct += torch.sum(preds == labels.data)
-        loop.set_postfix(loss=loss.item())
+        loop.set_postfix(loss=f"{loss.item():.3f}")
 
     train_epoch_loss = train_loss / float(len(train_loader.dataset))
     train_epoch_acc = train_correct.double() / float(len(train_loader.dataset))
@@ -145,13 +145,14 @@ for epoch in range(NUM_EPOCHS):
     end = time.perf_counter()
 
     print(
-        f"Epoch {epoch + 1}/{NUM_EPOCHS}, "
+        f"[Epoch {epoch + 1}/{NUM_EPOCHS}] "
         f"Train Loss: {train_epoch_loss:.4f}, Train Acc: {train_epoch_acc:.4f}, "
         f"Val Loss: {val_epoch_loss:.4f}, Val Acc: {val_epoch_acc:.4f}"
     )
     print(f"Epoch time: {end - start}s")
 
-    torch.save(model.state_dict(), f"./mobilenet_v3_large_{DOM_THRESHOLD * 100:.0f}.pth")
+    print("Saving model")
+    torch.save(model, f"./models/mobilenet_v3_large_{DOM_THRESHOLD * 100:.0f}.pth")
     model.eval()
     dummy_input = torch.randn(1, 3, 224, 224, device=device)
     model_to_export = model.module if isinstance(model, torch.nn.DataParallel) else model
