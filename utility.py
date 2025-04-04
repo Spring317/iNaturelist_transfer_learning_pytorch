@@ -208,12 +208,12 @@ def save_model(model: torch.nn.Module, name: str, device: torch.device):
 
     # ONNX export
     dummy_input = torch.randn(1, 3, 224, 224, device=device)
-    export_path = f"./models/{name}"
+    export_path = f"./models/new_model/{name}"
     to_export = model.module if isinstance(model, torch.nn.DataParallel) else model
     torch.onnx.export(
         to_export,
         dummy_input,  # type: ignore
-        export_path,
+        f"{export_path}.onnx",
         export_params=True,
         opset_version=14,
         do_constant_folding=True,
