@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from dataset_builder.core.exceptions import FailedOperation
-from dataset_builder.core.utility import save_manifest_parquet
+from dataset_builder.core.utility import save_manifest_parquet, write_data_to_json
 from dataset_builder.manifest.identifying_dominant_species import (
     _identifying_dominant_species,
 )
@@ -92,6 +92,14 @@ def _collect_images_by_dominance(
 
     return current_id
 
+
+def _write_species_composition(output_path: str, image_list: List[Tuple[str, int]], species_dict: Dict[int, str]):
+    species_composition: Dict[str, int] = {}
+    for species_label, species_name in species_dict.items():
+        current_species = [1 for label in image_list if label[1] == species_label]
+        total_species = sum(current_species)
+        species_composition[species_name] = total_species
+    write_data_to_json(output_path, "species_composition", species_composition)
 
 def _write_species_lists(
     base_output_path: str,
@@ -188,6 +196,8 @@ def run_manifest_generator(
 
     with open(os.path.join(output_dir, "dominant_labels.json"), "w", encoding="utf-8") as file:
         json.dump(species_dict, file, indent=4)
+    
+    _write_species_composition(os.path.join(output_dir, "species_composition.json"), image_list, species_dict)
 
     train_data, val_data = train_test_split(
         image_list,
