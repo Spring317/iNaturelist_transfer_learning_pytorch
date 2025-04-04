@@ -83,5 +83,3 @@ for base_model in sorted(os.listdir(MODEL_PATH)):
             save_model(model, f"{NAME}_{dominant_threshold * 100:.0f}_prune_{prune_threshold}", device)
             end_save = time.perf_counter()
             print(f"Save time: {end_save - start_save:.2f}s", end="\n\n")
-
-    break
