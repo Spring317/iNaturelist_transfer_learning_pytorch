@@ -201,7 +201,8 @@ def validate(
 
 
 def save_model(model: torch.nn.Module, name: str, device: torch.device):
-    model_path = f"./models/{name}.pth"
+    os.makedirs("./models/new_model", exist_ok=True)
+    model_path = f"./models/new_model/{name}.pth"
     torch.save(model, model_path)
     print(f"Saved model to {model_path}")
 
