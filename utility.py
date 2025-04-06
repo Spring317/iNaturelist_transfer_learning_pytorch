@@ -16,7 +16,7 @@ from sklearn.metrics import classification_report
 
 class CustomDataset(Dataset):
     def __init__(self, data_path, transform=None):
-        self.image_labels = load_manifest_parquet(data_path)[:10]
+        self.image_labels = load_manifest_parquet(data_path)
         self.transform = transform
 
     def __len__(self):
