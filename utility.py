@@ -16,7 +16,7 @@ from sklearn.metrics import classification_report
 
 class CustomDataset(Dataset):
     def __init__(self, data_path, transform=None):
-        self.image_labels = load_manifest_parquet(data_path)
+        self.image_labels = load_manifest_parquet(data_path)[:10]
         self.transform = transform
 
     def __len__(self):
@@ -136,7 +136,7 @@ def train_one_epoch(
 
         total_loss += loss.item() * images.size(0)
         correct += (outputs.argmax(1) == labels).sum().item()
-        loop.set_postfix(loss=f"{loss.item():.3f}")
+        loop.set_postfix(loss=f"{loss.detach().item():.3f}")
 
     avg_loss = total_loss / len(dataloader.dataset)  # type: ignore
     accuracy = correct / len(dataloader.dataset)  # type: ignore
@@ -208,12 +208,12 @@ def save_model(model: torch.nn.Module, name: str, device: torch.device):
 
     # ONNX export
     dummy_input = torch.randn(1, 3, 224, 224, device=device)
-    export_path = f"./models/new_model/{name}"
+    export_path = f"./models/new_model/{name}.onnx"
     to_export = model.module if isinstance(model, torch.nn.DataParallel) else model
     torch.onnx.export(
         to_export,
         dummy_input,  # type: ignore
-        f"{export_path}.onnx",
+        export_path,
         export_params=True,
         opset_version=14,
         do_constant_folding=True,
