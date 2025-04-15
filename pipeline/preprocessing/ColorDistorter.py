@@ -2,7 +2,7 @@ from torchvision import transforms  # type: ignore
 
 
 class ColorDistorter:
-    def __init__(self, ordering: int, brightness=31. / 255., contrast=0.5, saturation=0.5, hue=0.2):
+    def __init__(self, ordering: int, brightness=32. / 255., contrast=0.5, saturation=0.5, hue=0.2):
         self.ordering = ordering
         self.brightness = brightness
         self.contrast = contrast
@@ -12,12 +12,12 @@ class ColorDistorter:
 
     def __call__(self, img):
         ops = {
-            -1: [self._brightness, self._saturation, self._hue, self._contrast],
-            0: [self._saturation, self._brightness, self._contrast, self._hue],
-            1: [self._contrast, self._hue, self._brightness, self._saturation],
-            2: [self._hue, self._saturation, self._contrast, self._brightness]
+            0: [self._brightness, self._saturation, self._hue, self._contrast],
+            1: [self._saturation, self._brightness, self._contrast, self._hue],
+            2: [self._contrast, self._hue, self._brightness, self._saturation],
+            3: [self._hue, self._saturation, self._contrast, self._brightness]
         }
-        for fn in ops[self.ordering % 3]:
+        for fn in ops[self.ordering % 4]:
             img = fn(img)
         return img
 
