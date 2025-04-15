@@ -17,7 +17,7 @@ with open("./data/haute_garonne/dataset_species_labels.json") as file:
 
 BATCH_SIZE = 64
 NUM_WORKERS = 12
-NUM_EPOCHS = 1
+NUM_EPOCHS = 50
 NUM_SPECIES = len(species_labels.keys())
 NAME = "mobilenet_v3_large"
 
@@ -47,7 +47,6 @@ val_loader = DataLoader(
     persistent_workers=True,
 )
 warmup_epochs = 5
-total_epochs = 50
 
 optimizer = torch.optim.AdamW(
     model.parameters(),
@@ -59,7 +58,7 @@ scheduler = SequentialLR(
     optimizer,
     schedulers=[
         LinearLR(optimizer, start_factor=0.1, total_iters=warmup_epochs),
-        CosineAnnealingLR(optimizer, T_max=total_epochs - warmup_epochs)
+        CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS - warmup_epochs)
     ],
     milestones=[warmup_epochs]
 )
