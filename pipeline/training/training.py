@@ -2,7 +2,7 @@ import torch
 import os
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from dataset_loader import CustomDataset
+from pipeline.dataset_loader import CustomDataset
 from typing import Tuple
 from sklearn.metrics import f1_score
 
