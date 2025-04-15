@@ -20,11 +20,11 @@ def get_device(use_cpu=False) -> torch.device:
         device = torch.device("cpu")
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}", end=" | ")
-    if torch.cuda.is_available():
-        print(f"GPU model: {torch.cuda.get_device_name(device)}")
-    else:
-        print("No GPU found")
+        if torch.cuda.is_available():
+            print(f"GPU model: {torch.cuda.get_device_name(device)}")
+        else:
+            print("No GPU found")
+    print(f"Using device: {device}")
     return device
 
 
