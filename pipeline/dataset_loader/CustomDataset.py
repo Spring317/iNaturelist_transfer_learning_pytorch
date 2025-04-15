@@ -8,7 +8,7 @@ from dataset_builder.core.utility import load_manifest_parquet
 
 class CustomDataset(Dataset):
     def __init__(self, data_path: str, train: bool=True, img_size:Tuple[int, int]=(224, 224)):
-        self.image_label_with_correct_labels: List[Tuple[str, int]] = load_manifest_parquet(data_path)[:10000]
+        self.image_label_with_correct_labels: List[Tuple[str, int]] = load_manifest_parquet(data_path)
         self.train = train
         self.img_size = img_size
 
