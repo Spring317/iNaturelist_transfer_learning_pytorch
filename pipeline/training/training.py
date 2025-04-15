@@ -67,7 +67,7 @@ def train_validate(
 ) -> Tuple[float, float, float]:
     model.eval()
     total_loss, correct = 0.0, 0
-    loop = tqdm(dataloader, desc="Training", unit="batch", leave=False)
+    loop = tqdm(dataloader, desc="Validating", unit="batch", leave=False)
     true_labels, pred_labels = [], []
     with torch.no_grad():
         for images, labels in loop:

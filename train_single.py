@@ -23,7 +23,6 @@ NUM_SPECIES = len(species_labels.keys())
 NAME = "mobilenet_v3_large"
 
 model = mobile_net_v3_large_builder(device, num_outputs=NUM_SPECIES)
-# train_loader, val_loader = build_dataloaders("./data/haute_garonne", BATCH_SIZE, NUM_WORKERS)
 train_dataset = CustomDataset("./data/haute_garonne/train.parquet", train=True)
 val_dataset = CustomDataset("./data/haute_garonne/val.parquet", train=False)
 
@@ -69,6 +68,7 @@ criterion = torch.nn.CrossEntropyLoss(weight=weights)
 
 
 best_acc = -1.0
+best_f1 = -1.0
 for epoch in range(NUM_EPOCHS):
     start = time.perf_counter()
     train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
@@ -79,6 +79,8 @@ for epoch in range(NUM_EPOCHS):
     if val_acc > best_acc:
         start = time.perf_counter()
         best_acc = val_acc
+        best_f1 = macro_f1
         save_model(model, f"{NAME}", "models", device, (224, 224))
         end = time.perf_counter()
         print(f"Save time: {end - start:.2f}s")
+print(f"Best accuracy: {best_acc} with F1-score: {best_f1}")

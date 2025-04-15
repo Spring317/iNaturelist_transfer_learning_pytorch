@@ -1,30 +1,13 @@
-import json
 import os
 import time
 
 import gc
 import torch  # type: ignore
-from utility import save_model, get_device, build_dataloaders, train_one_epoch, validate
-from dataset_builder import run_manifest_generator
-from dataset_builder.core import load_config, validate_config
-from dataset_builder.core.exceptions import ConfigError
-
-
-try:
-    config = load_config("./config.yaml")
-    validate_config(config)
-except ConfigError as e:
-    print(e)
-    exit()
-
-
-target_classes = config["global"]["included_classes"]
-dst_dataset_path = config["paths"]["dst_dataset"]
-dst_dataset_name = os.path.basename(dst_dataset_path)
-output_path = config["paths"]["output_dir"]
-dst_properties_path = os.path.join(output_path, f"{dst_dataset_name}_composition.json")
-train_size = config["train_val_split"]["train_size"]
-randomness = config["train_val_split"]["random_state"]
+from torch.utils.data import DataLoader
+from pipeline.utility import mobile_net_v3_large_builder, get_device
+from pipeline.dataset_loader import CustomDataset
+from pipeline.utility import manifest_generator_wrapper
+from pipeline.training import train_one_epoch, train_validate, save_model
 
 
 device = get_device()
@@ -41,19 +24,27 @@ print(f"Using {NUM_WORKERS} workers")
 
 for threshold in DOM_THRESHOLDS:
     print("\n\n")
-    run_manifest_generator(
-        dst_dataset_path,
-        dst_dataset_path,
-        dst_properties_path,
-        train_size,
-        randomness,
-        target_classes,
-        threshold / 100,
-    )
+    manifest_generator_wrapper(threshold / 100)
     print("\n\n")
 
-    train_loader, val_loader = build_dataloaders(
-        "./data/haute_garonne", BATCH_SIZE, NUM_WORKERS
+    train_dataset = CustomDataset("./data/haute_garonne/train.parquet", train=True)
+    val_dataset = CustomDataset("./data/haute_garonne/val.parquet", train=False)
+    
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=NUM_WORKERS,
+        pin_memory=True,
+        persistent_workers=True,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=NUM_WORKERS,
+        pin_memory=True,
+        persistent_workers=True,
     )
 
     for base_model in sorted(os.listdir(MODEL_PATH)):
@@ -67,15 +58,19 @@ for threshold in DOM_THRESHOLDS:
         print(f"Training: {base_model}")
         dom_threshold = int(model_name_list[3]) / 100  # type: ignore
         prune_threshold = int(model_name_list[-1])
-        model = torch.load(
-            os.path.join(MODEL_PATH, base_model),
-            map_location=device,
-            weights_only=False,
-        )
-        model = model.to(device)
+        model_path = os.path.join(MODEL_PATH, base_model)
+        model = mobile_net_v3_large_builder(device, path=model_path)
 
-        with open("./data/haute_garonne/dataset_species_labels.json") as file:
-            species_labels = json.load(file)
+        # model = torch.load(
+        #     os.path.join(MODEL_PATH, base_model),
+        #     map_location=device,
+        #     weights_only=False,
+        # )
+
+        # model = model.to(device)
+
+        # with open("./data/haute_garonne/dataset_species_labels.json") as file:
+        #     species_labels = json.load(file)
 
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(
@@ -89,7 +84,7 @@ for threshold in DOM_THRESHOLDS:
             train_loss, train_acc = train_one_epoch(
                 model, train_loader, criterion, optimizer, device
             )
-            val_loss, val_acc = validate(model, val_loader, criterion, device)
+            val_loss, val_acc = train_validate(model, val_loader, criterion, device)
             scheduler.step()
             end = time.perf_counter()
             print(
@@ -102,7 +97,9 @@ for threshold in DOM_THRESHOLDS:
                 save_model(
                     model,
                     f"{NAME}_{dom_threshold * 100:.0f}_prune_{prune_threshold}",
+                    "model/new_model",
                     device,
+                    (224, 224)
                 )
                 end_save = time.perf_counter()
                 print(f"Save time: {end_save - start_save:.2f}s", end="\n\n")
