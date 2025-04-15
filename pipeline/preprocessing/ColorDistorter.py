@@ -8,7 +8,10 @@ class ColorDistorter:
         self.contrast = contrast
         self.saturation = saturation
         self.hue = hue
-
+        self._brightness_jitter = transforms.ColorJitter(brightness=self.brightness)
+        self._contrast_jitter = transforms.ColorJitter(saturation=self.saturation)
+        self._saturation_jitter = transforms.ColorJitter(saturation=self.saturation)
+        self._hue_jitter = transforms.ColorJitter(hue=self.hue)
 
     def __call__(self, img):
         ops = {
@@ -23,16 +26,16 @@ class ColorDistorter:
 
 
     def _brightness(self, img):
-        return transforms.ColorJitter(brightness=self.brightness)(img)
+        return self._brightness_jitter(img)
 
 
     def _saturation(self, img):
-        return transforms.ColorJitter(saturation=self.saturation)(img)
+        return self._saturation_jitter(img)
 
 
     def _contrast(self, img):
-        return transforms.ColorJitter(contrast=self.contrast)(img)
+        return self._contrast_jitter(img)
 
 
     def _hue(self, img):
-        return transforms.ColorJitter(hue=self.hue)(img)
+        return self._hue_jitter(img)

@@ -1,10 +1,17 @@
 import torch
 import os
+import numpy as np
+import onnxruntime as ort
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from pipeline.dataset_loader import CustomDataset
+from pipeline.utility import manifest_generator_wrapper, get_support_list, generate_report
 from typing import Tuple
-from sklearn.metrics import f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    recall_score,
+)
 
 
 def train_one_epoch(
@@ -108,3 +115,39 @@ def save_model(
         dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
     )
     print(f"Exported ONNX model to {onnx_path}")
+
+
+def validation_onnx(onnx_path, val_loader, species_names, device="cpu"):
+    model_name = os.path.basename(onnx_path)
+    dom = model_name.split("_")[1]
+    manifest_generator_wrapper(dom/100)
+    total_support_list = get_support_list("./data/haute_garonne/species_composition.json", species_names)
+
+    ort_session = ort.InferenceSession(onnx_path, providers=["CUDAExecutionProvider" if device == "cuda" else "CPUExecutionProvider"])
+    input_name = ort_session.get_inputs()[0].name
+    output_name = ort_session.get_outputs()[0].name
+
+    all_preds, all_labels = [], []
+    
+
+    for images, labels in tqdm(val_loader, desc="Validating", unit="Batch"):
+        # Convert tensor to numpy + permute to NHWC
+        images_np = images.permute(0, 2, 3, 1).cpu().numpy().astype(np.float32)
+
+        outputs = ort_session.run([output_name], {input_name: images_np})[0]
+        preds = np.argmax(outputs, axis=1)
+
+        all_preds.extend(preds)
+        all_labels.extend(labels.cpu().numpy())
+
+    # Metrics
+    accuracy = accuracy_score(all_labels, all_preds)
+    recall = recall_score(all_labels, all_preds, average="weighted")
+    f1 = f1_score(all_labels, all_preds, average="weighted")
+
+    print(f"ONNX Validation Accuracy: {accuracy:.4f}")
+    print(f"ONNX Weighted Recall: {recall:.4f}")
+    print(f"ONNX Weighted F1-Score: {f1:.4f}")
+
+    report_df = generate_report(all_labels, all_preds, species_names, total_support_list, float(accuracy))
+    return report_df
