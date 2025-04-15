@@ -2,12 +2,13 @@ import json
 import time
 
 import torch  # type: ignore
-from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader
-from pipeline.utility.utility import mobile_net_v3_large_builder, get_device
+
 from pipeline.dataset_loader import CustomDataset
-from pipeline.utility import manifest_generator_wrapper, calculate_weight_cross_entropy
-from pipeline.training import train_one_epoch, train_validate, save_model
+from pipeline.training import save_model, train_one_epoch, train_validate
+from pipeline.utility import calculate_weight_cross_entropy, manifest_generator_wrapper
+from pipeline.utility.utility import get_device, mobile_net_v3_large_builder
 
 manifest_generator_wrapper()
 device = get_device()
@@ -71,10 +72,10 @@ best_acc = -1.0
 for epoch in range(NUM_EPOCHS):
     start = time.perf_counter()
     train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-    val_loss, val_acc = train_validate(model, val_loader, criterion, device)
+    val_loss, val_acc, macro_f1 = train_validate(model, val_loader, criterion, device)
     scheduler.step()
     end = time.perf_counter()
-    print(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} Acc: {val_acc:.4f} | Time: {end - start:.2f}s")
+    print(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} Val acc: {val_acc:.4f} Val F1: {macro_f1:.4f} | Time: {end - start:.2f}s")
     if val_acc > best_acc:
         start = time.perf_counter()
         best_acc = val_acc

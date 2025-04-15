@@ -2,8 +2,9 @@ import torch
 import os
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from ..dataset_loader import CustomDataset
+from dataset_loader import CustomDataset
 from typing import Tuple
+from sklearn.metrics import f1_score
 
 
 def train_one_epoch(
@@ -56,10 +57,11 @@ def train_validate(
     dataloader: DataLoader[CustomDataset],
     criterion,
     device: torch.device
-) -> Tuple[float, float]:
+) -> Tuple[float, float, float]:
     model.eval()
     total_loss, correct = 0.0, 0
     loop = tqdm(dataloader, desc="Training", unit="batch", leave=False)
+    true_labels, pred_labels = [], []
     with torch.no_grad():
         for images, labels in loop:
             images, labels = images.to(device), labels.to(device)
@@ -67,11 +69,17 @@ def train_validate(
 
             loss = criterion(outputs, labels)
             total_loss += loss.detach().item() * images.size(0)
-            correct += (outputs.argmax(1) == labels).sum().item()
+
+            preds = outputs.argmax(dim=1)
+            correct += (preds == labels).sum().item()
+            true_labels.extend(labels.cpu().numpy())
+            pred_labels.extend(preds.cpu().numpy())
 
     avg_loss = total_loss / len(dataloader.dataset)  # type: ignore
     accuracy = correct / len(dataloader.dataset)  # type: ignore
-    return avg_loss, accuracy
+    macro_f1 = f1_score(true_labels, pred_labels, average="macro")
+
+    return avg_loss, accuracy, float(macro_f1)
 
 
 def save_model(
