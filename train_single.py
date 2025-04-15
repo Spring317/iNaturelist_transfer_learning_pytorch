@@ -22,7 +22,7 @@ NUM_EPOCHS = 50
 NUM_SPECIES = len(species_labels.keys())
 NAME = "mobilenet_v3_large"
 
-model = mobile_net_v3_large_builder(device, num_outputs=NUM_SPECIES)
+model = mobile_net_v3_large_builder(device, num_outputs=NUM_SPECIES, start_with_weight=True)
 train_dataset = CustomDataset("./data/haute_garonne/train.parquet", train=True)
 val_dataset = CustomDataset("./data/haute_garonne/val.parquet", train=False)
 
