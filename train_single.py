@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
 from torch.utils.data import DataLoader
 from pipeline.utility.utility import mobile_net_v3_large_builder, get_device
 from pipeline.dataset_loader import CustomDataset
-from pipeline.utility import manifest_generator_wrapper
+from pipeline.utility import manifest_generator_wrapper, calculate_weight_cross_entropy
 from pipeline.training import train_one_epoch, train_validate, save_model
 
 manifest_generator_wrapper()
@@ -21,7 +21,7 @@ NUM_EPOCHS = 50
 NUM_SPECIES = len(species_labels.keys())
 NAME = "mobilenet_v3_large"
 
-model = mobile_net_v3_large_builder(NUM_SPECIES, device)
+model = mobile_net_v3_large_builder(device, num_outputs=NUM_SPECIES)
 # train_loader, val_loader = build_dataloaders("./data/haute_garonne", BATCH_SIZE, NUM_WORKERS)
 train_dataset = CustomDataset("./data/haute_garonne/train.parquet", train=True)
 val_dataset = CustomDataset("./data/haute_garonne/val.parquet", train=False)
@@ -62,7 +62,9 @@ scheduler = SequentialLR(
     ],
     milestones=[warmup_epochs]
 )
-criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+weights = calculate_weight_cross_entropy("./data/haute_garonne/species_composition.json", "./data/haute_garonne/dataset_species_labels.json")
+weights = weights.to(device)
+criterion = torch.nn.CrossEntropyLoss(weight=weights)
 
 
 best_acc = -1.0
@@ -73,9 +75,9 @@ for epoch in range(NUM_EPOCHS):
     scheduler.step()
     end = time.perf_counter()
     print(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} Acc: {val_acc:.4f} | Time: {end - start:.2f}s")
-    start = time.perf_counter()
     if val_acc > best_acc:
+        start = time.perf_counter()
         best_acc = val_acc
         save_model(model, f"{NAME}", "models", device, (224, 224))
-    end = time.perf_counter()
-    print(f"Save time: {end - start:.2f}s")
+        end = time.perf_counter()
+        print(f"Save time: {end - start:.2f}s")

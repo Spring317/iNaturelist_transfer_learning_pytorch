@@ -7,11 +7,12 @@ import numpy as np
 from typing import List, Tuple, Optional
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from torchvision import models, transforms
+from torchvision import models
 from sklearn.metrics import classification_report
 from dataset_builder import run_manifest_generator
 from dataset_builder.core import load_config, validate_config
 from dataset_builder.core.exceptions import ConfigError
+from pipeline.dataset_loader import CustomDataset
 
 
 def get_device(use_cpu=False) -> torch.device:
@@ -27,8 +28,13 @@ def get_device(use_cpu=False) -> torch.device:
     return device
 
 
-def mobile_net_v3_large_builder(num_outputs: int, device: torch.device, start_with_weight=False, path: Optional[str]=None):
-    if path:
+def mobile_net_v3_large_builder(
+    device: torch.device,
+    num_outputs: Optional[int] = None,
+    start_with_weight=False,
+    path: Optional[str] = None,
+):
+    if path and not num_outputs:
         # load full model
         model = torch.load(path, map_location=device, weights_only=False)
         model = model.to(device)
@@ -42,59 +48,39 @@ def mobile_net_v3_large_builder(num_outputs: int, device: torch.device, start_wi
             model = models.mobilenet_v3_large(weights=None)
         old_linear_layer = model.classifier[3]
         assert isinstance(old_linear_layer, nn.Linear), "Expected a Linear layer"
+        assert isinstance(num_outputs, int), (
+            "Expected an int for classification layer output"
+        )
         model.classifier[3] = nn.Linear(old_linear_layer.in_features, num_outputs)
         model = model.to(device)
 
     return model
 
 
-def build_dataloaders(
-    data_dir: str, batch_size: int, num_workers: int
-) -> Tuple[DataLoader, DataLoader]:
-    transform_train = transforms.Compose(
-        [
-            transforms.RandomResizedCrop(224, scale=(0.05, 1.0), ratio=(0.75, 1.33)),
-            transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(
-                brightness=32.0 / 255.0, saturation=0.5, contrast=0.5, hue=0.2
-            ),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ]
-    )
-
-    transform_val = transforms.Compose(
-        [
-            # Resize to maintain 87.5% central fraction
-            transforms.Resize(int(224 / 0.875)),
-            transforms.CenterCrop(224),  # Central cropping (87.5%)
-            transforms.ToTensor(),  # Convert image to tensor [0, 1]
-            transforms.Normalize(
-                mean=[0.5, 0.5, 0.5],  # Normalize to [-1, 1]
-                std=[0.5, 0.5, 0.5],
-            ),
-        ]
-    )
-
-    train_dataset = CustomDataset(
-        os.path.join(data_dir, "train.parquet"), transform_train
-    )
-    val_dataset = CustomDataset(os.path.join(data_dir, "val.parquet"), transform_val)
+def dataloader_wrapper(
+    train_dataset: CustomDataset,
+    val_dataset: CustomDataset,
+    batch_size: int,
+    num_workers: int,
+    shuffle: bool = True,
+    pin_memory: bool = True,
+    persistent_workers: bool = True,
+):
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=shuffle,
         num_workers=num_workers,
-        pin_memory=True,
-        persistent_workers=True,
+        pin_memory=pin_memory,
+        persistent_workers=persistent_workers,
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=shuffle,
         num_workers=num_workers,
-        pin_memory=True,
-        persistent_workers=True,
+        pin_memory=pin_memory,
+        persistent_workers=persistent_workers,
     )
     return train_loader, val_loader
 
@@ -146,12 +132,12 @@ def train_one_epoch_amp(
 ):
     model.train()
     total_loss, correct = 0.0, 0
-    loop = tqdm(dataloader, desc="Training")
+    loop = tqdm(dataloader, desc="Training", leave=False)
     for images, labels in loop:
         images, labels = images.to(device), labels.to(device)
 
         optimizer.zero_grad()
-        with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+        with torch.autocast(device_type="cuda", dtype=torch.float16):
             outputs = model(images)
 
             # Tensor guard
@@ -166,8 +152,6 @@ def train_one_epoch_amp(
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
-        # loss.backward()
-        # optimizer.step()
 
         total_loss += loss.detach().item() * images.size(0)
         correct += (outputs.argmax(1) == labels).sum().item()
@@ -231,6 +215,7 @@ def generate_report(
     total_support_list: List[int],
     accuracy: float,
 ) -> pd.DataFrame:
+
     report_dict = classification_report(
         all_labels,
         all_preds,
@@ -239,30 +224,45 @@ def generate_report(
         zero_division=0,
     )
     report_df = pd.DataFrame(report_dict).transpose()
-    val_support_series = report_df.loc[species_names, "support"]
+
+    # extract support and compute training support
+    val_support_series = report_df.loc[species_names, "support"].astype(int)
     total_support_series = pd.Series(total_support_list, index=species_names)
     train_support_series = total_support_list - val_support_series
+
+    # add new column
+    report_df.loc[species_names, "support"] = val_support_series
     report_df.loc[species_names, "train_support"] = train_support_series.astype(int)
     report_df.loc[species_names, "total_support"] = total_support_series.astype(int)
-    report_df.loc[species_names, "support"] = report_df.loc[
-        species_names, "support"
-    ].astype(int)
 
-    species_df = report_df.loc[species_names].copy()
+    # reorganize the report
+    species_df = report_df.loc[species_names].copy()  # type: ignore
     summary_df = report_df.drop(index=species_names).copy()
+
+    # sort species by f1-score (ascending)
     species_df = species_df.sort_values(by="f1-score", ascending=True)
+
+    # combine details + summary
     report_df = pd.concat([species_df, summary_df])
-    report_df.loc["accuracy"] = {
+
+    report_df.loc["accuracy"] = {  # type: ignore
         "precision": accuracy,
         "recall": 0,
         "f1-score": 0,
         "support": np.nan,
+        "train_support": np.nan,
+        "total_support": np.nan
     }
-    report_df.loc["macro avg", "support"] = np.nan
-    report_df.loc["weighted avg", "support"] = np.nan
+
+    # clean up summary support rows
+    for row in ["macro avg", "weighted avg"]:
+        for col in ["support", "train_support", "total_support"]:
+            if col in report_df.columns:
+                report_df.loc[row, col] = np.nan
     return report_df
 
-def manifest_generator_wrapper(dominant_threshold: Optional[float]=None):
+
+def manifest_generator_wrapper(dominant_threshold: Optional[float] = None):
     try:
         config = load_config("./config.yaml")
         validate_config(config)
@@ -274,7 +274,9 @@ def manifest_generator_wrapper(dominant_threshold: Optional[float]=None):
     dst_dataset_path = config["paths"]["dst_dataset"]
     dst_dataset_name = os.path.basename(dst_dataset_path)
     output_path = config["paths"]["output_dir"]
-    dst_properties_path = os.path.join(output_path, f"{dst_dataset_name}_composition.json")
+    dst_properties_path = os.path.join(
+        output_path, f"{dst_dataset_name}_composition.json"
+    )
     train_size = config["train_val_split"]["train_size"]
     randomness = config["train_val_split"]["random_state"]
     if not dominant_threshold:
@@ -290,3 +292,23 @@ def manifest_generator_wrapper(dominant_threshold: Optional[float]=None):
         target_classes,
         dominant_threshold,
     )
+
+
+def calculate_weight_cross_entropy(species_composition_path, species_labels_path):
+    with open(species_composition_path, "r") as species_f:
+        species_data = json.load(species_f)
+
+    with open(species_labels_path, "r") as labels_f:
+        labels_data = json.load(labels_f)
+
+    species_names  = list(labels_data.values())
+
+    species_counts = []
+
+    for species in species_names:
+        species_counts.append(species_data[species])
+    counts_tensor = torch.tensor(species_counts, dtype=torch.float)
+
+    inv_freq = 1.0 / counts_tensor
+    weights = inv_freq / inv_freq.sum() * len(inv_freq)
+    return weights
