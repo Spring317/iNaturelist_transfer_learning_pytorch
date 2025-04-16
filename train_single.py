@@ -11,7 +11,9 @@ from pipeline.utility import calculate_weight_cross_entropy, manifest_generator_
 from pipeline.utility.utility import get_device, mobile_net_v3_large_builder
 
 manifest_generator_wrapper()
+print()
 device = get_device()
+print()
 
 with open("./data/haute_garonne/dataset_species_labels.json") as file:
     species_labels = json.load(file)
