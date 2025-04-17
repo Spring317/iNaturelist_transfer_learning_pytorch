@@ -57,12 +57,12 @@ pruner = tp.pruner.BNScalePruner(
     importance=importance,
     global_pruning=True,
     isomorphic=True,
-    pruning_ratio=0.5,
+    pruning_ratio=0.3,
     ignored_layers=ignored_layers,
     round_to=8
 )
 
-warmup_epochs = 5
+warmup_epochs = 3
 
 for epoch in range(warmup_epochs):
     train_loss, train_acc = sparse_warmup_epoch(model, train_loader, criterion, optimizer, pruner, device)
@@ -71,22 +71,4 @@ for epoch in range(warmup_epochs):
 tp.utils.print_tool.before_pruning(model)
 pruner.step()
 tp.utils.print_tool.after_pruning(model)
-
-
-best_acc = -1.0
-best_f1 = -1.0
-for epoch in range(NUM_EPOCHS):
-    start = time.perf_counter()
-    train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-    val_loss, val_acc, macro_f1 = train_validate(model, val_loader, criterion, device)
-    scheduler.step()
-    end = time.perf_counter()
-    print(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} Val acc: {val_acc:.4f} Val F1: {macro_f1:.4f} | Time: {end - start:.2f}s")
-    if val_acc > best_acc:
-        start = time.perf_counter()
-        best_acc = val_acc
-        best_f1 = macro_f1
-        save_model(model, f"{NAME}", "models", device, (224, 224))
-        end = time.perf_counter()
-        print(f"Save time: {end - start:.2f}s")
-print(f"Best accuracy: {best_acc} with F1-score: {best_f1}")
+save_model(model, f"{NAME}", "models", device, (224, 224))
