@@ -64,8 +64,9 @@ pruner = tp.pruner.BNScalePruner(
 
 warmup_epochs = 5
 
-for _ in range(warmup_epochs):
+for epoch in range(warmup_epochs):
     train_loss, train_acc = sparse_warmup_epoch(model, train_loader, criterion, optimizer, pruner, device)
+    print(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Acc: {train_acc:.4f}")
 
 tp.utils.print_tool.before_pruning(model)
 pruner.step()
