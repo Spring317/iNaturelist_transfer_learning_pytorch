@@ -5,7 +5,7 @@ import torch  # type: ignore
 import torch_pruning as tp
 from torch.utils.data import DataLoader
 from pipeline.dataset_loader import CustomDataset
-from pipeline.training import save_model, train_one_epoch, train_validate
+from pipeline.training import save_model, train_one_epoch, train_validate, sparse_warmup_epoch
 from pipeline.utility import manifest_generator_wrapper
 from pipeline.utility.utility import get_device, mobile_net_v3_large_builder
 
@@ -63,10 +63,9 @@ pruner = tp.pruner.BNScalePruner(
 )
 
 warmup_epochs = 5
+
 for _ in range(warmup_epochs):
-    pruner.update_regularizer()
-    train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-    pruner.regularize(model)
+    train_loss, train_acc = sparse_warmup_epoch(model, train_loader, criterion, optimizer, pruner, device)
 
 tp.utils.print_tool.before_pruning(model)
 pruner.step()

@@ -59,6 +59,53 @@ def train_one_epoch(
     return avg_loss, accuracy
 
 
+def sparse_warmup_epoch(
+    model: torch.nn.Module,
+    dataloader: DataLoader[CustomDataset],
+    criterion,
+    optimizer,
+    pruner,
+    device: torch.device
+) -> Tuple[float, float]:
+    model.train()
+    pruner.update_regularizer()
+    total_loss, correct = 0.0, 0
+    loop = tqdm(dataloader, desc="Training", unit="batch", leave=False)
+    checked_labels = False
+    for images, labels in loop:
+        images, labels = images.to(device), labels.to(device)
+
+        # tensor guard
+        if not checked_labels:
+            num_classes = model(images).shape[1]
+            label_min = labels.min().item()
+            label_max = labels.max().item()
+
+            if labels.min() < 0 or labels.max() >= num_classes:
+                raise ValueError(
+                    f"Invalid labels detected!\n"
+                    f"Labels: {labels}\n"
+                    f"Min: {label_min}, Max: {label_max}\n"
+                    f"Model output classes: {num_classes}"
+                )
+            checked_labels = True
+
+        optimizer.zero_grad()
+        outputs = model(images)
+
+        loss = criterion(outputs, labels)
+        loss.backward()
+        pruner.regularize(model)
+        optimizer.step()
+
+        total_loss += loss.detach().item() * images.size(0)
+        correct += (outputs.argmax(1) == labels).sum().item()
+        loop.set_postfix(loss=f"{loss.detach().item():.3f}")
+
+    avg_loss = total_loss / len(dataloader.dataset)  # type: ignore
+    accuracy = correct / len(dataloader.dataset)  # type: ignore
+    return avg_loss, accuracy
+
 def train_validate(
     model: torch.nn.Module,
     dataloader: DataLoader[CustomDataset],
@@ -119,8 +166,8 @@ def save_model(
 
 def validation_onnx(onnx_path, val_loader, species_names, device="cpu"):
     model_name = os.path.basename(onnx_path)
-    dom = model_name.split("_")[1]
-    manifest_generator_wrapper(dom/100)
+    dom = model_name.replace(".onnx", "").split("_")[1]
+    manifest_generator_wrapper(int(dom)/100)
     total_support_list = get_support_list("./data/haute_garonne/species_composition.json", species_names)
 
     ort_session = ort.InferenceSession(onnx_path, providers=["CUDAExecutionProvider" if device == "cuda" else "CPUExecutionProvider"])
