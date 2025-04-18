@@ -84,12 +84,10 @@ for threshold in DOM_THRESHOLDS:
             train_loss, train_acc = train_one_epoch(
                 model, train_loader, criterion, optimizer, device
             )
-            val_loss, val_acc = train_validate(model, val_loader, criterion, device)
+            val_loss, val_acc, macro_f1 = train_validate(model, val_loader, criterion, device)
             scheduler.step()
             end = time.perf_counter()
-            print(
-                f"[Epoch {epoch + 1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} Acc: {val_acc:.4f} | Time: {end - start:.2f}s"
-            )
+            print(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} Val acc: {val_acc:.4f} Val F1: {macro_f1:.4f} | Time: {end - start:.2f}s")
             if val_acc > best_acc:
                 best_acc = val_acc
                 print("Saving model...")
