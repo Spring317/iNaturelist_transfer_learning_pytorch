@@ -13,22 +13,21 @@ from pipeline.training import train_one_epoch, train_validate, save_model
 device = get_device()
 
 
-BATCH_SIZE = 96
+BATCH_SIZE = 64
 NUM_WORKERS = 16
 NUM_EPOCHS = 15
-# NUM_SPECIES = len(species_labels.keys())
 NAME = "mobilenet_v3_large"
-MODEL_PATH = "./models/"
-DOM_THRESHOLDS = [50, 80, 90]
+MODEL_PATH = "./models/global_prune/"
+DOM_THRESHOLDS = [80, 90]
 print(f"Using {NUM_WORKERS} workers")
 
 for threshold in DOM_THRESHOLDS:
     print("\n\n")
-    manifest_generator_wrapper(threshold / 100)
+    _, train_images, val_images, _, _ = manifest_generator_wrapper(threshold / 100) # type: ignore
     print("\n\n")
 
-    train_dataset = CustomDataset("./data/haute_garonne/train.parquet", train=True)
-    val_dataset = CustomDataset("./data/haute_garonne/val.parquet", train=False)
+    train_dataset = CustomDataset(train_images, train=True)
+    val_dataset = CustomDataset(val_images, train=False)
     
     train_loader = DataLoader(
         train_dataset,
@@ -61,17 +60,6 @@ for threshold in DOM_THRESHOLDS:
         model_path = os.path.join(MODEL_PATH, base_model)
         model = mobile_net_v3_large_builder(device, path=model_path)
 
-        # model = torch.load(
-        #     os.path.join(MODEL_PATH, base_model),
-        #     map_location=device,
-        #     weights_only=False,
-        # )
-
-        # model = model.to(device)
-
-        # with open("./data/haute_garonne/dataset_species_labels.json") as file:
-        #     species_labels = json.load(file)
-
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(
             model.parameters(), lr=0.01, momentum=0.9, nesterov=True
@@ -86,8 +74,7 @@ for threshold in DOM_THRESHOLDS:
             )
             val_loss, val_acc, macro_f1 = train_validate(model, val_loader, criterion, device)
             scheduler.step()
-            end = time.perf_counter()
-            print(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} Val acc: {val_acc:.4f} Val F1: {macro_f1:.4f} | Time: {end - start:.2f}s")
+            print(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} Val acc: {val_acc:.4f} Val F1: {macro_f1:.4f}")
             if val_acc > best_acc:
                 best_acc = val_acc
                 print("Saving model...")
@@ -101,8 +88,10 @@ for threshold in DOM_THRESHOLDS:
                 )
                 end_save = time.perf_counter()
                 print(f"Save time: {end_save - start_save:.2f}s", end="\n\n")
+            end = time.perf_counter()
+            print("Total time: {end - start:.2f}s")
+
     del train_loader
     del val_loader
     torch.cuda.empty_cache()
-
     gc.collect()
