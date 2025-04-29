@@ -1,9 +1,7 @@
-import os
-
 import pandas as pd
 import torch
 from torch import nn
-from typing import List
+from typing import List, Dict
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -30,7 +28,7 @@ def extracting_feature_maps(model: nn.Module) -> pd.DataFrame:
             })
         return hook
 
-    feature_data = []
+    feature_data: List[Dict] = []
     model.eval()
 
     # register hooks
@@ -88,7 +86,7 @@ def plot_heat_map_feature_maps(dataframes: List[pd.DataFrame], fig_name: str, fi
     totals = total_rows.sort_values("Prune")["Size (KB)"].values
     prune_levels = total_rows.sort_values("Prune")["Prune"].values
     summary_text = "Total (KB): " + ", ".join([f"{p}%: {s:.2f} KB" for p, s in zip(prune_levels, totals)])
-    plt.figtext(0.5, 0.97, summary_text, ha="center", fontsize=14)
+    plt.figtext(0.5, 0.97, summary_text, ha="center", fontsize=10)
 
     plt.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))  # leave space for the figtext
     plt.savefig(fig_name)
