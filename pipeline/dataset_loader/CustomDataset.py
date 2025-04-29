@@ -1,14 +1,22 @@
 import torch
 from PIL import Image
-from typing import Tuple, List, Callable
+from typing import Tuple, List, Callable, Union
 from torch.utils.data import Dataset, get_worker_info
 from torchvision import transforms
 from pipeline.preprocessing import ColorDistorter, CentralCropResize
 from dataset_builder.core.utility import load_manifest_parquet
 
 class CustomDataset(Dataset):
-    def __init__(self, data_path: str, train: bool=True, img_size:Tuple[int, int]=(224, 224)):
-        self.image_label_with_correct_labels: List[Tuple[str, int]] = load_manifest_parquet(data_path)
+    def __init__(
+        self, 
+        data: Union[str, List[Tuple[str, int]]], 
+        train: bool=True, 
+        img_size:Tuple[int, int]=(224, 224)
+    ):
+        if isinstance(data, str):
+            self.image_label_with_correct_labels = load_manifest_parquet(data)
+        else:
+            self.image_label_with_correct_labels = data
         self.train = train
         self.img_size = img_size
 
@@ -34,10 +42,10 @@ class CustomDataset(Dataset):
                 transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
             ])
         else:
-            transform: Callable[[Image.Image], torch.Tensor] = transforms.Compose([
+            transform= transforms.Compose([
                 CentralCropResize(central_fraction=0.875, size=self.img_size)
             ])
 
-        image = transform(image)
+        image = transform(image)  # type: ignore
 
         return image, label  # type: ignore
