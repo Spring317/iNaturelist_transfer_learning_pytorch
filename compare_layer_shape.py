@@ -22,9 +22,9 @@ NUM_SPECIES = len(species_labels.keys())
 DOM_THRESHOLD = config["train_val_split"]["dominant_threshold"]
 
 
-original_model = torch.load("/home/tom-maverick/Documents/Final Results/MobileNetV3/mobilenet_v3_large_50.pth", map_location=device, weights_only=False)
+original_model = torch.load("/home/tom-maverick/Documents/Final Results/MobileNetV3/mobilenet_v3_large_90.pth", map_location=device, weights_only=False)
 original_model.eval()
-pruned_model = torch.load("/home/tom-maverick/Documents/Final Results/MobileNetV3-modified_train_prune_retrain_multiple_thresholds/mobilenet_v3_large_50_prune_30.pth", map_location=device, weights_only=False)
+pruned_model = torch.load("/home/tom-maverick/Documents/Final Results/MobileNetV3-modified_train_prune_retrain_multiple_thresholds_global/mobilenet_v3_large_90_prune_50.pth", map_location=device, weights_only=False)
 pruned_model.eval()
 
 original_summary = get_model_summary(original_model)
