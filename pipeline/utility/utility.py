@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 import pandas as pd
 import numpy as np
-from typing import List, Tuple, Optional
+import cv2
+from typing import List, Tuple, Optional, Union, Dict
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torchvision import models
@@ -201,16 +202,19 @@ def save_model(model: torch.nn.Module, name: str, device: torch.device):
     print(f"Exported ONNX model to {export_path}")
 
 
-def get_support_list(json_path: str, species_name: List[str]) -> List[int]:
-    with open(json_path, "r") as f:
-        species_count_dict = json.load(f)
+def get_support_list(species_composition: Union[str, Dict[str, int]], species_name: List[str]) -> List[int]:
+    if isinstance(species_composition, str):
+        with open(species_composition, "r") as f:
+            species_count_dict = json.load(f)
+    else:
+        species_count_dict = species_composition
     total_support_list = [species_count_dict.get(name, 0) for name in species_name]
     return total_support_list
 
 
 def generate_report(
-    all_labels: List[np.ndarray],
-    all_preds: List[np.ndarray],
+    all_labels: List[int],
+    all_preds: List[int],
     species_names: List[str],
     total_support_list: List[int],
     accuracy: float,
@@ -262,7 +266,7 @@ def generate_report(
     return report_df
 
 
-def manifest_generator_wrapper(dominant_threshold: Optional[float] = None):
+def manifest_generator_wrapper(dominant_threshold: Optional[float] = None, export: bool = False):
     try:
         config = load_config("./config.yaml")
         validate_config(config)
@@ -283,7 +287,7 @@ def manifest_generator_wrapper(dominant_threshold: Optional[float] = None):
         dominant_threshold = config["train_val_split"]["dominant_threshold"]
     assert isinstance(dominant_threshold, float), "Invalid dominant threshold."
 
-    run_manifest_generator(
+    return run_manifest_generator(
         dst_dataset_path,
         dst_dataset_path,
         dst_properties_path,
@@ -291,6 +295,7 @@ def manifest_generator_wrapper(dominant_threshold: Optional[float] = None):
         randomness,
         target_classes,
         dominant_threshold,
+        export=export
     )
 
 
@@ -312,3 +317,30 @@ def calculate_weight_cross_entropy(species_composition_path, species_labels_path
     inv_freq = 1.0 / counts_tensor
     weights = inv_freq / inv_freq.sum() * len(inv_freq)
     return weights
+
+
+def preprocess_eval_opencv(image_path, width, height, central_fraction=0.857, is_inception_v3: bool = False):
+    img = cv2.imread(image_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    if img is None:
+        raise ValueError("Failed to read image")
+    h, w, _ = img.shape
+
+    crop_h = int(h * central_fraction)
+    crop_w = int(w * central_fraction)
+
+    offset_h = (h - crop_h) // 2
+    offset_w = (w - crop_w) // 2
+    img = img[offset_h: offset_h + crop_h, offset_w: offset_w + crop_w]
+
+    img = cv2.resize(img, (width, height), interpolation=cv2.INTER_LINEAR)
+
+    img = img.astype(np.float32) / 255.0
+    img = (img - 0.5) * 2.0
+
+    img = np.expand_dims(img, axis=0)
+    img = np.transpose(img, (0, 3, 1, 2))
+    if is_inception_v3:
+        img = np.transpose(img, (2, 0, 1))
+
+    return img
