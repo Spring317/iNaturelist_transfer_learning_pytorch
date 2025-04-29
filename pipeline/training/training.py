@@ -5,7 +5,11 @@ import onnxruntime as ort
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from pipeline.dataset_loader import CustomDataset
-from pipeline.utility import manifest_generator_wrapper, get_support_list, generate_report
+from pipeline.utility import (
+    manifest_generator_wrapper,
+    get_support_list,
+    generate_report,
+)
 from typing import Tuple
 from sklearn.metrics import (
     accuracy_score,
@@ -19,8 +23,37 @@ def train_one_epoch(
     dataloader: DataLoader[CustomDataset],
     criterion,
     optimizer,
-    device: torch.device
+    device: torch.device,
 ) -> Tuple[float, float]:
+    """
+    Trains the given model for one epoch on the provided DataLoader.
+
+    This function performs standard supervised learning with forward pass, 
+    loss computation, backpropagation, and optimizer updates. It also includes
+    a label sanity check to ensure labels fall within valid class index range.
+
+    Args:
+        model (torch.nn.Module): 
+            The model to be trained.
+        dataloader (DataLoader[CustomDataset]): 
+            A DataLoader that yields batches of (image, label) pairs.
+        criterion: 
+            A loss function (e.g., nn.CrossEntropyLoss).
+        optimizer: 
+            A PyTorch optimizer (e.g., torch.optim.Adam or SGD).
+        device (torch.device): 
+            The device on which to perform computation (CPU or GPU).
+
+    Returns:
+        Tuple[float, float]: 
+            A tuple containing:
+                - The average training loss over the entire dataset.
+                - The training accuracy over the entire dataset.
+
+    Notes:
+        - A tensor guard checks that the ground-truth labels fall within the valid range `[0, num_classes - 1]` based on model output shape.
+        - Accumulates total correct predictions and total loss for final reporting.
+    """
     model.train()
     total_loss, correct = 0.0, 0
     loop = tqdm(dataloader, desc="Training", unit="batch", leave=False)
@@ -65,7 +98,7 @@ def sparse_warmup_epoch(
     criterion,
     optimizer,
     pruner,
-    device: torch.device
+    device: torch.device,
 ) -> Tuple[float, float]:
     model.train()
     pruner.update_regularizer()
@@ -106,12 +139,38 @@ def sparse_warmup_epoch(
     accuracy = correct / len(dataloader.dataset)  # type: ignore
     return avg_loss, accuracy
 
+
 def train_validate(
     model: torch.nn.Module,
     dataloader: DataLoader[CustomDataset],
     criterion,
-    device: torch.device
+    device: torch.device,
 ) -> Tuple[float, float, float]:
+    """
+    Trains the model for one epoch with sparsity regularization applied via a pruner.
+
+    This function is used during a warm-up phase of sparse training, where a regularizer (e.g., L1/L2 penalty on weights or activations) is applied to encourage sparsity before actual pruning is performed.
+
+    Args:
+        model (torch.nn.Module): 
+            The model to be trained.
+        dataloader (DataLoader[CustomDataset]): 
+            A DataLoader that yields batches of (image, label) pairs.
+        criterion: 
+            The loss function used to train the model (e.g., CrossEntropyLoss).
+        pruner: 
+            A sparsity regularizer object that provides:
+                - `update_regularizer()`: Called once before training.
+                - `regularize(model)`: Called on each backward pass to apply regularization.
+        device (torch.device): 
+            The device on which to perform training (CPU or GPU).
+
+    Returns:
+        Tuple[float, float]: 
+            A tuple containing:
+                - Average loss over the epoch.
+                - Accuracy over the entire dataset.
+    """
     model.eval()
     total_loss, correct = 0.0, 0
     loop = tqdm(dataloader, desc="Validating", unit="batch", leave=False)
@@ -137,12 +196,40 @@ def train_validate(
 
 
 def save_model(
-    model: torch.nn.Module, 
-    name: str, 
-    save_path: str, 
-    device: torch.device, 
-    img_size: Tuple[int ,int]
+    model: torch.nn.Module,
+    name: str,
+    save_path: str,
+    device: torch.device,
+    img_size: Tuple[int, int],
 ):
+    """
+    Saves a PyTorch model in both `.pth` and ONNX formats.
+
+    This function exports the given model to:
+        - PyTorch format (.pth) using `torch.save()`
+        - ONNX format (.onnx) using `torch.onnx.export()`, with support for dynamic batch sizes
+
+    Args:
+        model (torch.nn.Module): 
+            The trained PyTorch model to be saved.
+        name (str): 
+            Base name for the output files (e.g., 'mobilenetv3').
+        save_path (str): 
+            Directory where the model files will be saved. Will be created if it doesn't exist.
+        device (torch.device): 
+            Device on which to create the dummy input tensor for ONNX export.
+        img_size (Tuple[int, int]): 
+            Expected input image size as (height, width) for dummy input.
+
+    Output Files:
+        - `<save_path>/<name>.pth`: PyTorch serialized model.
+        - `<save_path>/<name>.onnx`: ONNX exported model with dynamic batch dimension.
+
+    Notes:
+        - ONNX export uses `opset_version=14` and includes constant folding for optimization.
+        - Assumes the model expects input shape `(N, 3, H, W)` where H and W are from `img_size`.
+        - Dynamic axes allow for variable batch sizes during ONNX inference.
+    """
     os.makedirs(save_path, exist_ok=True)
     pytorch_path = os.path.join(save_path, f"{name}.pth")
     torch.save(model, pytorch_path)
@@ -152,7 +239,7 @@ def save_model(
     onnx_path = os.path.join(save_path, f"{name}.onnx")
     torch.onnx.export(
         model,
-        (dummy_input, ),
+        (dummy_input,),
         onnx_path,
         export_params=True,
         opset_version=14,
@@ -164,18 +251,54 @@ def save_model(
     print(f"Exported ONNX model to {onnx_path}")
 
 
-def validation_onnx(onnx_path, val_loader, species_names, device="cpu"):
+def validation_onnx(onnx_path: str, device: str = "cpu"):
+    """
+    Validates an ONNX model against a given validation dataset and computes classification metrics.
+
+    This function loads an ONNX model, runs inference on a validation DataLoader, collects predictions, and evaluates performance using accuracy, weighted recall, and weighted F1-score.
+    It also generates a per-class evaluation report as a pandas DataFrame.
+
+    Args:
+        onnx_path (str): 
+            Path to the ONNX model file.
+        device (str, optional): 
+            Device to use for inference ("cpu" or "cuda").
+
+    Returns:
+        pd.DataFrame: 
+            A classification report containing metrics such as precision, recall, and F1-score
+            for each species class.
+
+    Notes:
+        - Assumes input tensors are normalized and shaped as (N, 3, H, W) and converts them to (N, H, W, 3) for ONNX runtime.
+        - Dynamically detects the dominant threshold from the ONNX model filename (expects format like `model_80.onnx`).
+    """
     model_name = os.path.basename(onnx_path)
     dom = model_name.replace(".onnx", "").split("_")[1]
-    manifest_generator_wrapper(int(dom)/100)
-    total_support_list = get_support_list("./data/haute_garonne/species_composition.json", species_names)
+    _, train_images, val_images, species_dict, species_composition = manifest_generator_wrapper(int(dom) / 100)
+    val_dataset = CustomDataset(val_images, train=False)
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=64,
+        shuffle=False,
+        num_workers=16,
+        pin_memory=True,
+        persistent_workers=True,
+    )
 
-    ort_session = ort.InferenceSession(onnx_path, providers=["CUDAExecutionProvider" if device == "cuda" else "CPUExecutionProvider"])
+    species_names = list(species_dict.values())
+    total_support_list = get_support_list(species_composition, species_names)
+
+    ort_session = ort.InferenceSession(
+        onnx_path,
+        providers=[
+            "CUDAExecutionProvider" if device == "cuda" else "CPUExecutionProvider"
+        ],
+    )
     input_name = ort_session.get_inputs()[0].name
     output_name = ort_session.get_outputs()[0].name
 
     all_preds, all_labels = [], []
-    
 
     for images, labels in tqdm(val_loader, desc="Validating", unit="Batch"):
         # Convert tensor to numpy + permute to NHWC
@@ -196,5 +319,7 @@ def validation_onnx(onnx_path, val_loader, species_names, device="cpu"):
     print(f"ONNX Weighted Recall: {recall:.4f}")
     print(f"ONNX Weighted F1-Score: {f1:.4f}")
 
-    report_df = generate_report(all_labels, all_preds, species_names, total_support_list, float(accuracy))
+    report_df = generate_report(
+        all_labels, all_preds, species_names, total_support_list, float(accuracy)
+    )
     return report_df

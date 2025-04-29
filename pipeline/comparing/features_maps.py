@@ -7,6 +7,28 @@ import seaborn as sns
 
 
 def extracting_feature_maps(model: nn.Module) -> pd.DataFrame:
+    """
+    Analyzes the intermediate feature maps produced by a neural network model.
+
+    This function registers forward hooks on all named layers of the given model 
+    (excluding container layers like nn.Sequential), performs a forward pass using 
+    a dummy input tensor of shape (1, 3, 224, 224), and collects shape and memory 
+    usage statistics for each layer's output.
+
+    The result is returned as a pandas DataFrame sorted by descending memory usage (KB).
+    A summary row is also appended at the end showing the total memory used by all layers.
+
+    Args:
+        model (nn.Module): The PyTorch model to analyze.
+
+    Returns:
+        pd.DataFrame: A table containing:
+            - Layer: The layer name.
+            - Shape(s): List of shapes of output tensors from that layer.
+            - Total Elements: Number of elements across all outputs.
+            - Size (KB): Total memory footprint in kilobytes (float32 precision).
+            - TOTAL row: A final summary row aggregating memory size over all layers.
+    """
     def hook_fn(name):
         def hook(module, input, output):
             if isinstance(output, torch.Tensor):
@@ -60,6 +82,30 @@ def extracting_feature_maps(model: nn.Module) -> pd.DataFrame:
 
 
 def plot_heat_map_feature_maps(dataframes: List[pd.DataFrame], fig_name: str, fig_title: str):
+    """
+    Plots a heatmap of memory usage (in KB) across model layers and pruning levels.
+
+    This function takes in multiple DataFrames containing layer-wise feature map sizes 
+    for different pruning levels, combines them, and creates a pivoted heatmap showing 
+    memory usage per layer per pruning level. It also appends a summary text at the top 
+    showing total memory per pruning level.
+
+    Args:
+        dataframes (List[pd.DataFrame]): 
+            A list of DataFrames, each containing the columns:
+                - "Layer": Name of the layer (string)
+                - "Prune": Pruning level (float)
+                - "Size (KB)": Memory usage of the layer’s output (float)
+        fig_name (str): The filename (with path) to save the resulting heatmap figure.
+        fig_title (str): The title to display at the top of the heatmap.
+
+    Notes:
+        - Rows where `Layer == "TOTAL"` (case-insensitive) are excluded from the heatmap,
+          but their values are summarized and shown as text above the plot.
+        - The heatmap uses a blue-green ("YlGnBu") color scale and annotates each cell
+          with the actual memory value.
+        - Output image is saved as a static PNG file via `plt.savefig(fig_name)`.
+    """
     # combine and sort
     combined_df = pd.concat(dataframes, ignore_index=True)
     combined_df["Prune"] = combined_df["Prune"].astype(int)

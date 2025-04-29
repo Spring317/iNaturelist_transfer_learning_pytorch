@@ -5,7 +5,7 @@ import pandas as pd
 import onnxruntime as ort
 import scipy.special
 from tqdm import tqdm
-from typing import Dict, List, Union, Tuple
+from typing import Dict, List, Union, Tuple, Optional
 from collections import defaultdict
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, accuracy_score
@@ -13,6 +13,29 @@ from dataset_builder.core.utility import load_manifest_parquet
 from pipeline.utility import generate_report, get_support_list, preprocess_eval_opencv
 
 class MonteCarloSimulation:
+    """
+    A class for running Monte Carlo simulations to evaluate the performance and robustness of an ONNX image classification model.
+
+    The simulation randomly samples species and images, runs model inference, and collects evaluation statistics such as communication rates, false positive rates, and accuracy scores.
+    It also supports saving detailed reports and plotting confusion matrices.
+
+    Args:
+        model_path (str): 
+            Path to the ONNX model to load.
+        data_manifest (Union[str, List[Tuple[str, int]]]): 
+            Either the path to a Parquet file containing (image_path, label) pairs or a preloaded list of (image_path, label) samples.
+        dataset_species_labels (Dict[int, str]): 
+            Mapping from integer class IDs to species names.
+        input_size (Tuple[int, int], optional): 
+            Expected (height, width) for input images. Defaults to (224, 224).
+        providers (List[str], optional): 
+            List of ONNXRuntime providers for inference (e.g., CPU, CUDA). Defaults to ["CPUExecutionProvider"].
+
+    Notes:
+        - The simulation first ensures one sample per species, then fills the rest of the batch using weighted random sampling based on species image availability.
+        - The confusion matrix is saved to a file if requested.
+        - If `save_path` is provided, a detailed CSV report of classification metrics is generated.
+    """
     def __init__(
         self, 
         model_path, 
@@ -46,11 +69,38 @@ class MonteCarloSimulation:
 
 
     def _get_other_id(self):
+        """
+        Retrieves the class ID corresponding to the "Other" species label.
+
+        This method inverts the species_labels dictionary (mapping from class ID -> label) to label -> class ID, and attempts to find the class ID associated with "Other".
+        If "Other" is not present, returns -1 as a default.
+
+        Returns:
+            int: The class ID of the "Other" species if found, otherwise -1.
+        """
         species_labels_flip: Dict[str, int] = dict((v, k) for k, v in self.species_labels.items())
         return species_labels_flip.get("Other", -1)
 
 
-    def _infer_one(self, image_path: str):
+    def _infer_one(self, image_path: str) -> Optional[Tuple[int, float]]:
+        """
+        Performs model inference on a single input image and returns the top-1 predicted class index along with its probability score.
+
+        Args:
+            image_path (str): 
+                Path to the input image file.
+
+        Returns:
+            Optional[Tuple[int, float]]: 
+                A tuple containing:
+                    - The predicted class index (int).
+                    - The associated top-1 probability score (float).
+                Returns None if an error occurs during preprocessing or inference.
+
+        Notes:
+            - Images are preprocessed using `preprocess_eval_opencv` to match the model's input size.
+            - Softmax is applied to model outputs to obtain probability distributions.
+        """
         try:
             img = preprocess_eval_opencv(image_path, *self.input_size)
             outputs = self.session.run(None, {self.input_name: img})
@@ -64,6 +114,22 @@ class MonteCarloSimulation:
 
 
     def _plot_confusion_matrix(self, y_true, y_pred):
+        """
+        Plots and saves a confusion matrix for the model's predictions on the given true labels.
+
+        Args:
+            y_true (List[int]): 
+                Ground truth class IDs.
+            y_pred (List[int]): 
+                Predicted class IDs from the model.
+
+        Notes:
+            - Uses `sklearn.metrics.ConfusionMatrixDisplay` to visualize the matrix.
+            - Axis labels are derived from `self.species_labels` (class ID to name).
+            - The plot is saved as a PNG file with the filename:
+                "MonteCarloConfusionMatrix_<model_name>.png"
+            - The figure size is large (40x40 inches).
+        """
         cm = confusion_matrix(y_true, y_pred, labels=list(map(int, self.species_labels.keys())))
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=list(self.species_labels.values()))
         fig, ax = plt.subplots(figsize=(40, 40))
@@ -74,6 +140,30 @@ class MonteCarloSimulation:
 
 
     def _false_positive_rate(self, y_true, y_pred):
+        """
+        Computes the false positive rate (FPR) for the "Other" class predictions.
+
+        Specifically, it measures how often the model incorrectly predicts a sample that should be classified as "Other" (communication) into a different (local) class.
+
+        Args:
+            y_true (List[int]): 
+                Ground truth class IDs.
+            y_pred (List[int]): 
+                Predicted class IDs from the model.
+
+        Returns:
+            float: 
+                The false positive rate, calculated as:
+                    FPR = False Positives / (False Positives + True Negatives)
+                Returns 0.0 if there are no samples of the "Other" class.
+
+        Notes:
+            - "False Positive" (FP): 
+                True label is "Other", but the model predicts a different class.
+            - "True Negative" (TN): 
+                True label is "Other", and the model correctly predicts "Other".
+            - If there are no "Other" class samples, the function returns 0.0.
+        """
         # true: local / false: communication
         # fp: it should be communicate but model predict as local
         # tn: it should be communicate, model predict as communicate
@@ -98,6 +188,43 @@ class MonteCarloSimulation:
         plot_confusion_matrix: bool=False,
         save_path=None,
     ):
+        """
+        Runs a Monte Carlo simulation to evaluate model performance by repeatedly sampling 
+        and classifying random images across multiple runs.
+
+        For each run, a balanced sample containing at least one image per species is generated. 
+        The model's predictions are collected, and key metrics such as communication rate, 
+        false positive rate (FPR), and overall classification accuracy are computed.
+
+        Args:
+            species_labels (Dict[int, str]): 
+                Mapping from species ID to species name.
+            species_composition (Dict[str, int]): 
+                Dictionary mapping species names to the number of available images.
+            num_runs (int, optional): 
+                Number of independent simulation runs to perform. Defaults to 30.
+            sample_size (int, optional): 
+                Total number of images to sample per run. Defaults to 1000.
+            plot_confusion_matrix (bool, optional): 
+                Whether to generate and save a confusion matrix after simulation. Defaults to False.
+            save_path (str, optional): 
+                Directory to save a CSV report summarizing classification performance. 
+                If None, no report is saved.
+
+        Notes:
+            - Each run guarantees at least one sample per species.
+            - The remaining images are sampled based on species sampling probabilities.
+            - Communication rate is defined as the proportion of predictions labeled as "Other."
+            - False positive rate (FPR) is calculated specifically for the "Other" class.
+            - If `save_path` is provided, a detailed classification report CSV is saved.
+            - If `plot_confusion_matrix` is True, a confusion matrix PNG is generated and saved.
+
+        Output Files (optional):
+            - `MonteCarloConfusionMatrix_<model_name>.png`: 
+                Saved confusion matrix plot (if enabled).
+            - `<model_name>.csv`: 
+                Saved classification report containing per-class metrics (if enabled).
+        """
         species_names = list(species_labels.values())
         total_support_list = get_support_list(species_composition, species_names)
         comm_rates: List[float] = []
