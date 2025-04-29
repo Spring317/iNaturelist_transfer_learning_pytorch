@@ -70,8 +70,8 @@ for threshold in dominant_threshold:
         model.eval()
         val_loss, val_correct = 0.0, 0
 
-        all_preds: List[np.ndarray] = []
-        all_labels: List[np.ndarray] = []
+        all_preds: List[int] = []
+        all_labels: List[int] = []
 
         print("Begin validating")
         with torch.no_grad():

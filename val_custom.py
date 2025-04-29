@@ -18,21 +18,9 @@ species_names = list(species_labels.values())
 BATCH_SIZE = 64
 NUM_WORKERS = 12
 
-val_dataset = CustomDataset(
-    data_path="./data/haute_garonne/val.parquet", train=False, img_size=(299, 299)
-)
-
-val_loader = DataLoader(
-    val_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=NUM_WORKERS,
-    pin_memory=True,
-)
-
-onnx_model_path = "/home/tom-maverick/Documents/Final Results/InceptionV3_HG_onnx/inceptionv3_50.onnx"
-report_df = validation_onnx(onnx_model_path, val_loader, species_names, device="cuda")
+onnx_model_path = "./models/inceptionv3_100.onnx"
+report_df = validation_onnx(onnx_model_path, device="cuda")
 
 with pd.option_context('display.max_rows', None, 'display.max_columns', None): 
     # print(report_df)
-    report_df.to_csv("./reports/test.csv")
+    report_df.to_csv("./reports/inceptionv3_100.csv")
