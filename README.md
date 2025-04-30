@@ -6,9 +6,8 @@
 2. [Credits](#credits)
 3. [Dependencies and Installation](#dependencies-and-installation)
 4. [Dataset Preparation](#dataset-preparation)
-5. [Dataset visualization](#dataset-visualization)
-6. [Training & Evaluation](#training--evaluation)
-7. [Inference demo](#inference-demo)
+5. [Project Structure](#project-structure)
+6. [Key Design Choices](#key-design-choices)
 
 ## Overview
 This project is the continuation of this [repo](https://github.com/HoangPham6337/cvpr18-inaturalist-transfer), implemented in Tensorflow V1. We explores the application of transfer learning on a small subset of the iNaturelist 2017 dataset and various optimization techniques like pruning, quantization and model distillation. We aim to optimize fine-grained species classification for edge devices.
@@ -46,7 +45,7 @@ CVPR2018
 - [Large Scale Fine-Grained Categorization and Domain-Specific Transfer Learning (CVPR 2018)](https://arxiv.org/abs/1806.06193)
 - [Original GitHub Repository](https://github.com/richardaecn/cvpr18-inaturalist-transfer)
 
-### Dependencies and Installation
+## Dependencies and Installation
 
 This codebase uses `Pytorch 2.6.0` as its backbone.
 Setting up is fairly straight forward, you can install all the dependencies through:
