@@ -1,10 +1,7 @@
-import os
-
 import torch  # type: ignore
 import torch_pruning as tp  # type: ignore
 import numpy as np
 from pipeline.utility import get_device, mobile_net_v3_large_builder
-from pipeline.pruning import one_shot_prune
 
 device = get_device()
 
