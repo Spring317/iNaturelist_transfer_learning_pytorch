@@ -136,7 +136,7 @@ class MonteCarloSimulation:
         disp.plot(ax=ax, xticks_rotation=50, cmap="Blues", colorbar=True)
         plt.title("Confusion Matrix (Monte Carlo Simulation)")
         plt.tight_layout()
-        plt.savefig(f"MonteCarloConfusionMatrix_{os.path.basename(self.model_path).replace(".onnx", "")}.png")
+        plt.savefig(f"MonteCarloConfusionMatrix_{os.path.basename(self.model_path).replace('.onnx', '')}.png")
 
 
     def _false_positive_rate(self, y_true, y_pred):
