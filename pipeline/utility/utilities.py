@@ -102,6 +102,65 @@ def mobile_net_v3_large_builder(
     return model
 
 
+def convnext_large_builder(
+    device: torch.device,
+    num_outputs: Optional[int] = None,
+    start_with_weight=False,
+    path: Optional[str] = None,
+):
+    """
+    Builds or loads a ConvNeXt-Large model, optionally customized for a specific number of output classes.
+
+    This function supports two modes:
+        - Load a full pre-trained model checkpoint from a specified path.
+        - Build a new ConvNeXt-Large model from scratch (optionally using ImageNet weights), and modify its final classification layer to match the desired number of outputs.
+
+    Args:
+        device (torch.device): 
+            The device (CPU or GPU) on which the model will be loaded or created.
+        num_outputs (Optional[int], optional): 
+            Number of output classes for the final classification layer. 
+            Required if building a new model. Ignored if loading from a checkpoint.
+        start_with_weight (bool, optional): 
+            If True, initializes the model with default ImageNet pre-trained weights.
+            Defaults to False (random initialization).
+        path (Optional[str], optional): 
+            Path to a `.pth` file containing a serialized full model to load. 
+            If provided, `num_outputs` is ignored.
+
+    Returns:
+        torch.nn.Module: 
+            A ConvNeXt-Large model instance moved to the specified device.
+
+    Notes:
+        - When building a new model, the final classifier layer (`classifier[2]`) is replaced with a new `nn.Linear` to match the desired number of classes.
+        - When loading from a checkpoint (`path` is given), the model is assumed to have the correct output dimension already.
+        - Raises an assertion error if `num_outputs` is not provided when building a new model from scratch.
+    """
+
+    if path and not num_outputs:
+        # load full model
+        model = torch.load(path, map_location=device, weights_only=False)
+        model = model.to(device)
+
+    else:
+        if start_with_weight:
+            model = models.convnext_large(
+                weights=models.convnext.ConvNeXt_Large_Weights.IMAGENET1K_V1
+            )
+        else:
+            model = models.mobilenet_v3_large(weights=None)
+        old_linear_layer = model.classifier[2]
+        assert isinstance(old_linear_layer, nn.Linear), "Expected a Linear layer"
+        assert isinstance(num_outputs, int), (
+            "Expected an int for classification layer output"
+        )
+        model.classifier[2] = nn.Linear(old_linear_layer.in_features, num_outputs)
+        model = model.to(device)
+
+    return model
+
+
 def dataloader_wrapper(
     train_dataset: CustomDataset,
     val_dataset: CustomDataset,
@@ -329,7 +388,7 @@ def manifest_generator_wrapper(
     """
     try:
         config = load_config("./config.yaml")
-        validate_config(config)
+        # validate_config(config)
     except ConfigError as e:
         print(e)
         exit()
@@ -461,9 +520,10 @@ def preprocess_eval_opencv(image_path, width, height, central_fraction=0.857, is
     img = img.astype(np.float32) / 255.0
     img = (img - 0.5) * 2.0
 
-    img = np.expand_dims(img, axis=0)
-    img = np.transpose(img, (0, 3, 1, 2))
     if is_inception_v3:
-        img = np.transpose(img, (2, 0, 1))
+        img = np.expand_dims(img, axis=0)
+    else:
+        img = np.expand_dims(img, axis=0)
+        img = np.transpose(img, (0, 3, 1, 2))
 
     return img

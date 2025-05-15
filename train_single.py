@@ -7,9 +7,9 @@ from torch.utils.data import DataLoader
 
 from pipeline.dataset_loader import CustomDataset
 from pipeline.training import save_model, train_one_epoch, train_validate
-from pipeline.utility import calculate_weight_cross_entropy, manifest_generator_wrapper, get_device, mobile_net_v3_large_builder
+from pipeline.utility import calculate_weight_cross_entropy, manifest_generator_wrapper, get_device, mobile_net_v3_large_builder, convnext_large_builder
 
-_, train, val, _, _=  manifest_generator_wrapper(1.0)  # type: ignore
+_, train, val, _, _=  manifest_generator_wrapper(0.5, export=True)  # type: ignore
 print()
 device = get_device()
 print()
@@ -21,10 +21,10 @@ BATCH_SIZE = 64
 NUM_WORKERS = 8
 NUM_EPOCHS = 50
 NUM_SPECIES = len(species_labels.keys())
-NAME = "mobilenet_v3_large_100_test"
+NAME = "convnext_full_inat_bird_insect"
 ENABLE_EXPERIMENTAL_HYPERPARAM_TUNING = False
 
-model = mobile_net_v3_large_builder(device, num_outputs=NUM_SPECIES, start_with_weight=True)
+model = convnext_large_builder(device, num_outputs=NUM_SPECIES, start_with_weight=True)
 train_dataset = CustomDataset(train, train=True)
 val_dataset = CustomDataset(val, train=False)
 
@@ -79,12 +79,12 @@ for epoch in range(NUM_EPOCHS):
     scheduler.step()
     print(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} Val acc: {val_acc:.4f} Val F1: {macro_f1:.4f}")
     if val_acc > best_acc:
-        start = time.perf_counter()
+        start_save = time.perf_counter()
         best_acc = val_acc
         best_f1 = macro_f1
         save_model(model, f"{NAME}", "models", device, (224, 224))
-        end = time.perf_counter()
-        print(f"Save time: {end - start:.2f}s")
+        end_save = time.perf_counter()
+        print(f"Save time: {end_save - start_save:.2f}s")
     end = time.perf_counter()
-    print("Total time: {end - start:.2f}s")
+    print(f"Total time: {end - start:.2f}s")
 print(f"Best accuracy: {best_acc} with F1-score: {best_f1}")
