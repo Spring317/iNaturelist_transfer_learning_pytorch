@@ -9,6 +9,7 @@ from pipeline.utility import (
     get_support_list,
     generate_report,
     mobile_net_v3_large_builder,
+    convnext_large_builder,
     manifest_generator_wrapper,
 )
 from sklearn.metrics import accuracy_score, f1_score, recall_score
@@ -16,17 +17,17 @@ from pipeline.dataset_loader import CustomDataset
 
 
 device = get_device()
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 NUM_WORKERS = 12
 NAME = "mobilenet_v3_large"
 
-manifest_generator_wrapper()
+_, _, val_images, species_labels, species_composition = manifest_generator_wrapper(1.0)
 
-with open("./data/haute_garonne/dataset_species_labels.json") as file:
-    species_labels = json.load(file)
+# with open("./data/haute_garonne/dataset_species_labels_full_bird_insect.json") as file:
+#     species_labels = json.load(file)
 
 species_names = list(species_labels.values())
-val_dataset = CustomDataset("./data/haute_garonne/val.parquet", train=False)
+val_dataset = CustomDataset(val_images, train=False)
 val_loader = DataLoader(
     val_dataset,
     batch_size=BATCH_SIZE,
@@ -37,12 +38,12 @@ val_loader = DataLoader(
 )
 
 total_support_list = get_support_list(
-    "./data/haute_garonne/species_composition.json", species_names
+    species_composition, species_names
 )
 
-model = mobile_net_v3_large_builder(
+model = convnext_large_builder(
     device,
-    path="/home/tom-maverick/Desktop/baseline/mobilenet_v3_large_100_baseline.pth",
+    path="/home/tom-maverick/remotedir/models/convnext_full_inat_bird_insect_epoch_19.pth",
 )
 
 model.eval()
