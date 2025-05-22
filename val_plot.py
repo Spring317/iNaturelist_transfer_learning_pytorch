@@ -14,7 +14,7 @@ def get_file_data(dir: str, threshold: float):
         file_name_list = file_name.split("_")
         # if "inception" in file_name_list:
         #     continue
-        if file.endswith(".csv") and f"{int(threshold*100)}" == file_name_list[3]:
+        if file.endswith(".csv") and f"{int(threshold*100)}" == file_name_list[-1]:
             df = pd.read_csv(os.path.join(dir, file), index_col=0)
             accuracy = df.loc["accuracy"]["precision"]
             recall = df.loc["macro avg"]["recall"]
@@ -23,12 +23,12 @@ def get_file_data(dir: str, threshold: float):
             metrics.append((file_name, accuracy, recall, f1_score))
     return metrics
 
-# metrics_50 = get_file_data(DIRECTORY, 0.5)
-# metrics_80 = get_file_data(DIRECTORY, 0.8)
+metrics_50 = get_file_data(DIRECTORY, 0.5)
+metrics_80 = get_file_data(DIRECTORY, 0.8)
 metrics_90 = get_file_data(DIRECTORY, 0.9)
 metrics_100 = get_file_data(DIRECTORY, 1.0)
-metrics = sorted(metrics_90 + metrics_100)
-
+metrics = metrics_100 + metrics_50 + metrics_80 + metrics_90
+metrics = [metrics[1], metrics[0], metrics[2], metrics[3], metrics[4]]
 
 model_names = [m[0] for m in metrics]
 accuracy_vals = [m[1] for m in metrics]

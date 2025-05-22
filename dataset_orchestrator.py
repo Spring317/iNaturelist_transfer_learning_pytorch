@@ -11,7 +11,6 @@ from dataset_builder import (
     run_web_crawl,
     validate_config,
     venn_diagram,
-    visualizing_ppf_many
 )
 from dataset_builder.core import ConfigError, FailedOperation, PipelineError
 from dataset_builder.core.constants import CLASS_LIST
@@ -38,7 +37,7 @@ def run_stage(stage_name: str, func):
 
 try:
     config = load_config("./config.yaml")
-    validate_config(config)
+    # validate_config(config)
 except ConfigError as e:
     print(e)
     exit()
@@ -77,79 +76,79 @@ os.makedirs(dst_dataset_path, exist_ok=True)
 os.makedirs(output_path, exist_ok=True)
 
 try:
-    run_stage(
-        "Crawling the web to obtain the dataset",
-        lambda: run_web_crawl(
-            base_url, web_crawl_output_path, delay, total_pages, overwrite, verbose
-        ),
-    )
-    run_stage(
-        "Getting datasets properties",
-        lambda: run_analyze_dataset(
-            web_crawl_output_path,
-            output_path,
-            dst_dataset_name,
-            target_classes,
-            verbose,
-            overwrite,
-        ),
-    )
-    run_stage(
-        "Getting datasets properties",
-        lambda: run_analyze_dataset(
-            src_dataset_path,
-            output_path,
-            src_dataset_name,
-            target_classes,
-            verbose,
-            overwrite,
-        ),
-    )
-    run_stage(
-        "Matching species between datasets",
-        lambda: run_cross_reference(
-            matched_species_path,
-            src_dataset_json,
-            web_crawl_output_path,
-            src_dataset_name,
-            dst_dataset_name,
-            target_classes,
-            verbose,
-            overwrite,
-        ),
-    )
-    run_stage(
-        "Copying matching species",
-        lambda: run_copy_matched_species(
-            src_dataset_path,
-            dst_dataset_path,
-            matched_species_path,
-            target_classes,
-            verbose,
-        ),
-    )
-    run_stage(
-        "Getting datasets properties",
-        lambda: run_analyze_dataset(
-            dst_dataset_path,
-            output_path,
-            dst_dataset_name,
-            target_classes,
-            verbose,
-            True,
-        ),
-    )
-    run_stage(
-        "Getting datasets properties",
-        lambda: run_analyze_dataset(
-            src_dataset_path,
-            output_path,
-            src_dataset_name,
-            target_classes,
-            verbose,
-            True,
-        ),
-    )
+    # run_stage(
+    #     "Crawling the web to obtain the dataset",
+    #     lambda: run_web_crawl(
+    #         base_url, web_crawl_output_path, delay, total_pages, overwrite, verbose
+    #     ),
+    # )
+    # run_stage(
+    #     "Getting datasets properties",
+    #     lambda: run_analyze_dataset(
+    #         web_crawl_output_path,
+    #         output_path,
+    #         dst_dataset_name,
+    #         target_classes,
+    #         verbose,
+    #         overwrite,
+    #     ),
+    # )
+    # run_stage(
+    #     "Getting datasets properties",
+    #     lambda: run_analyze_dataset(
+    #         src_dataset_path,
+    #         output_path,
+    #         src_dataset_name,
+    #         target_classes,
+    #         verbose,
+    #         overwrite,
+    #     ),
+    # )
+    # run_stage(
+    #     "Matching species between datasets",
+    #     lambda: run_cross_reference(
+    #         matched_species_path,
+    #         src_dataset_json,
+    #         web_crawl_output_path,
+    #         src_dataset_name,
+    #         dst_dataset_name,
+    #         target_classes,
+    #         verbose,
+    #         overwrite,
+    #     ),
+    # )
+    # run_stage(
+    #     "Copying matching species",
+    #     lambda: run_copy_matched_species(
+    #         src_dataset_path,
+    #         dst_dataset_path,
+    #         matched_species_path,
+    #         target_classes,
+    #         verbose,
+    #     ),
+    # )
+    # run_stage(
+    #     "Getting datasets properties",
+    #     lambda: run_analyze_dataset(
+    #         dst_dataset_path,
+    #         output_path,
+    #         dst_dataset_name,
+    #         target_classes,
+    #         verbose,
+    #         True,
+    #     ),
+    # )
+    # run_stage(
+    #     "Getting datasets properties",
+    #     lambda: run_analyze_dataset(
+    #         src_dataset_path,
+    #         output_path,
+    #         src_dataset_name,
+    #         target_classes,
+    #         verbose,
+    #         True,
+    #     ),
+    # )
     run_stage(
         "Generating dataset manifests",
         lambda: run_manifest_generator(
@@ -162,54 +161,54 @@ try:
             dominant_threshold,
         ),
     )
-    run_stage(
-        "Generating visualization",
-        lambda: run_visualization(
-            src_dataset_path,
-            dst_dataset_path,
-            output_path,
-            CLASS_LIST,
-            target_classes,
-            verbose,
-            overwrite,
-        ),
-    )
-    run_stage(
-        "Generating PPF for Aves and Insecta",
-        lambda: visualizing_ppf_many(
-            src_properties_path,
-            CLASS_LIST,
-        )
-    )
+    # run_stage(
+    #     "Generating visualization",
+    #     lambda: run_visualization(
+    #         src_dataset_path,
+    #         dst_dataset_path,
+    #         output_path,
+    #         CLASS_LIST,
+    #         target_classes,
+    #         verbose,
+    #         overwrite,
+    #     ),
+    # )
+    # run_stage(
+    #     "Generating PPF for Aves and Insecta",
+    #     lambda: visualizing_ppf_many(
+    #         src_properties_path,
+    #         CLASS_LIST,
+    #     )
+    # )
     
-    run_stage(
-        "Generating Venn diagram",
-        lambda: venn_diagram(
-            src_dataset_json,
-            web_crawl_output_path,
-            src_dataset_name,
-            dst_dataset_name,
-            "Species Overlap Between Datasets",
-            CLASS_LIST,
-            os.path.join(output_path, f"{src_dataset_name}_vs_{dst_dataset_name}_venn.png"),
-            verbose,
-            overwrite
-        )
-    )
-    run_stage(
-        "Generating Venn diagram",
-        lambda: venn_diagram(
-            src_dataset_json,
-            web_crawl_output_path,
-            src_dataset_name,
-            dst_dataset_name,
-            "Species Overlap Between Datasets",
-            target_classes,
-            os.path.join(output_path, f"{src_dataset_name}_vs_{dst_dataset_name}_venn_target.png"),
-            verbose,
-            overwrite
-        )
-    )
+    # run_stage(
+    #     "Generating Venn diagram",
+    #     lambda: venn_diagram(
+    #         src_dataset_json,
+    #         web_crawl_output_path,
+    #         src_dataset_name,
+    #         dst_dataset_name,
+    #         "Species Overlap Between Datasets",
+    #         CLASS_LIST,
+    #         os.path.join(output_path, f"{src_dataset_name}_vs_{dst_dataset_name}_venn.png"),
+    #         verbose,
+    #         overwrite
+    #     )
+    # )
+    # run_stage(
+    #     "Generating Venn diagram",
+    #     lambda: venn_diagram(
+    #         src_dataset_json,
+    #         web_crawl_output_path,
+    #         src_dataset_name,
+    #         dst_dataset_name,
+    #         "Species Overlap Between Datasets",
+    #         target_classes,
+    #         os.path.join(output_path, f"{src_dataset_name}_vs_{dst_dataset_name}_venn_target.png"),
+    #         verbose,
+    #         overwrite
+    #     )
+    # )
 
 except FailedOperation as failedOp:
     print(failedOp, "\n")

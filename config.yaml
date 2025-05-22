@@ -12,9 +12,9 @@ paths:
 web_crawl:
   total_pages: 104
   base_url: "https://www.inaturalist.org/check_lists/32961-Haute-Garonne-Check-List?page="
-  delay_between_requests: 1
+  delay_between_requests: 1.0
 
 train_val_split:
   train_size: 0.8
   random_state: 42
-  dominant_threshold: 0.5
+  dominant_threshold: 0.9
