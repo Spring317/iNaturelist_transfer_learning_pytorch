@@ -15,11 +15,11 @@ This project is the continuation of this [repo](https://github.com/HoangPham6337
 ### Objectives
 - [x] Fine-tuned the model on a regional species subset.
 - [x] Implement an 'Other' classification for non-dominant species.
-- [ ] Create a custom `logits` layer (final characterization) using `logsumexp` that can vary the output based on dominant threshold. 
+- [x] Create a custom `logits` layer (final characterization) using `logsumexp` that can vary the output based on dominant threshold. 
 - [x] Prune layer by layer
 - [x] Prune globally
-- [ ] Prune based on the activated feature maps
-- [ ] Analyze the feature maps of the model if fine-tuning proves insufficient
+- [x] Prune based on the activated feature maps. The experiment result is available at [activation_based_pruning_exp branch](https://github.com/HoangPham6337/iNaturelist_transfer_learning_pytorch/tree/activation_based_pruning_exp)
+- [x] Analyze the feature maps of the model if fine-tuning proves insufficient
 - [ ] Improve real-time performance & efficiency of classification models
 
 ### Why Edge computing?
