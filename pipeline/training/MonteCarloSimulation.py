@@ -41,6 +41,7 @@ class MonteCarloSimulation:
         model_path, 
         data_manifest: Union[str, List[Tuple[str, int]]], 
         dataset_species_labels, 
+        is_inception_v3: bool,
         input_size=(224, 224),
         providers: List[str]=["CPUExecutionProvider"]
     ):
@@ -66,6 +67,7 @@ class MonteCarloSimulation:
             int(species_id): len(images) / total_images
             for species_id, images in self.species_to_images.items()
         }
+        self.is_inception_v3 = is_inception_v3
 
 
     def _get_other_id(self):
@@ -102,7 +104,7 @@ class MonteCarloSimulation:
             - Softmax is applied to model outputs to obtain probability distributions.
         """
         try:
-            img = preprocess_eval_opencv(image_path, *self.input_size)
+            img = preprocess_eval_opencv(image_path, *self.input_size, is_inception_v3=self.is_inception_v3)
             outputs = self.session.run(None, {self.input_name: img})
             probabilities = scipy.special.softmax(outputs[0], axis=1)
             top1_idx = int(np.argmax(probabilities[0]))

@@ -40,6 +40,5 @@ class CentralCropResize:
         img = functional.resize(
             img, self.size, interpolation=functional.InterpolationMode.BILINEAR
         )
-        img = img.sub(0.5).mul(2.0)
 
         return img

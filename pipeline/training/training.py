@@ -275,13 +275,13 @@ def validation_onnx(onnx_path: str, device: str = "cpu"):
     """
     model_name = os.path.basename(onnx_path)
     dom = model_name.replace(".onnx", "").split("_")[1]
-    _, train_images, val_images, species_dict, species_composition = manifest_generator_wrapper(int(dom) / 100)
-    val_dataset = CustomDataset(val_images, train=False)
+    _, train_images, val_images, species_dict, species_composition = manifest_generator_wrapper(1.0)
+    val_dataset = CustomDataset(val_images, train=False, img_size=(224, 224))
     val_loader = DataLoader(
         val_dataset,
-        batch_size=64,
+        batch_size=2,
         shuffle=False,
-        num_workers=16,
+        num_workers=8,
         pin_memory=True,
         persistent_workers=True,
     )
@@ -302,7 +302,8 @@ def validation_onnx(onnx_path: str, device: str = "cpu"):
 
     for images, labels in tqdm(val_loader, desc="Validating", unit="Batch"):
         # Convert tensor to numpy + permute to NHWC
-        images_np = images.permute(0, 2, 3, 1).cpu().numpy().astype(np.float32)
+        # images_np = images.permute(0, 2, 3, 1).cpu().numpy().astype(np.float32)
+        images_np = images.cpu().numpy().astype(np.float32)
 
         outputs = ort_session.run([output_name], {input_name: images_np})[0]
         preds = np.argmax(outputs, axis=1)
