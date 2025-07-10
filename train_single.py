@@ -17,7 +17,7 @@ def find_latest_checkpoint(model_name, models_dir="models"):
         return None, 0
     
     checkpoint_files = []
-    pattern = f"{model_name}_epoch_(\d+).pth"
+    pattern = rf"{model_name}_epoch_(\d+)\.pth"  # Using raw string (r prefix)
     
     for file in os.listdir(models_dir):
         match = re.match(pattern, file)
@@ -60,7 +60,7 @@ def load_checkpoint(checkpoint_path, model, optimizer, scheduler, device):
     print(f"Checkpoint loaded. Resuming from epoch {epoch + 1}")
     return epoch
 
-_, train, val, _, _=  manifest_generator_wrapper(0.5, export=True)  # type: ignore
+_, train, val, _, _=  manifest_generator_wrapper(1, export=True)  # type: ignore
 print("=========================================")
 device = get_device()
 print("=========================================")
