@@ -1,11 +1,11 @@
 global:
-  included_classes: ["Aves", "Insecta"]
+  included_classes: ["Insecta"]
   verbose: false
   overwrite: false
 
 paths:
-  src_dataset: "/run/media/tom-maverick/Dataset/train_val_images"
-  dst_dataset: "./data/haute_garonne"
+  src_dataset: "/haute_garonne"
+  dst_dataset: "./haute_garonne"
   web_crawl_output_json: "./output/haute_garonne.json"
   output_dir: "./output"
 
