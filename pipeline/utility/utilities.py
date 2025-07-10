@@ -107,9 +107,10 @@ def convnext_large_builder(
     num_outputs: Optional[int] = None,
     start_with_weight=False,
     path: Optional[str] = None,
+    input_size: int = 160,
 ):
     """
-    Builds or loads a ConvNeXt-Large model, optionally customized for a specific number of output classes.
+    Builds or loads a ConvNeXt-Large model, optionally customized for a specific number of output classes and input size.
 
     This function supports two modes:
         - Load a full pre-trained model checkpoint from a specified path.
@@ -127,6 +128,8 @@ def convnext_large_builder(
         path (Optional[str], optional): 
             Path to a `.pth` file containing a serialized full model to load. 
             If provided, `num_outputs` is ignored.
+        input_size (int, optional):
+            Input image size (assumes square images). Defaults to 160.
 
     Returns:
         torch.nn.Module: 
@@ -136,6 +139,7 @@ def convnext_large_builder(
         - When building a new model, the final classifier layer (`classifier[2]`) is replaced with a new `nn.Linear` to match the desired number of classes.
         - When loading from a checkpoint (`path` is given), the model is assumed to have the correct output dimension already.
         - Raises an assertion error if `num_outputs` is not provided when building a new model from scratch.
+        - For input sizes other than 224, the model adapts automatically through adaptive pooling.
     """
 
     if path and not num_outputs:
@@ -149,13 +153,22 @@ def convnext_large_builder(
                 weights=models.convnext.ConvNeXt_Large_Weights.IMAGENET1K_V1
             )
         else:
-            model = models.mobilenet_v3_large(weights=None)
+            # Fixed: Use convnext_large instead of mobilenet_v3_large
+            model = models.convnext_large(weights=None)
+        
         old_linear_layer = model.classifier[2]
         assert isinstance(old_linear_layer, nn.Linear), "Expected a Linear layer"
         assert isinstance(num_outputs, int), (
             "Expected an int for classification layer output"
         )
         model.classifier[2] = nn.Linear(old_linear_layer.in_features, num_outputs)
+        
+        # If input size is not 224, add adaptive pooling before classifier
+        if input_size != 224:
+            # ConvNeXt uses adaptive average pooling, so it should handle different input sizes
+            # The model will automatically adapt to the input size through its adaptive pooling layer
+            pass
+        
         model = model.to(device)
 
     return model
