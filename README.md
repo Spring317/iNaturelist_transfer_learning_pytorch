@@ -10,16 +10,16 @@
 6. [Key Design Choices](#key-design-choices)
 
 ## Overview
-This project is the continuation of this [repo](https://github.com/HoangPham6337/cvpr18-inaturalist-transfer), implemented in Tensorflow V1. We explores the application of transfer learning on a small subset of the iNaturelist 2017 dataset and various optimization techniques like pruning, quantization and model distillation. We aim to optimize fine-grained species classification for edge devices.
+This project is the continuation of this [repo](https://github.com/HoangPham6337/iNaturelist_transfer_learning_pytorch), with much focused on training on a specific subset (Insecta dataset in this case). We explores the effectiveness of caching mechanism on machine learning. We aim to optimize fine-grained species classification for edge devices.
 
 ### Objectives
 - [x] Fine-tuned the model on a regional species subset.
-- [x] Implement an 'Other' classification for non-dominant species.
-- [x] Create a custom `logits` layer (final characterization) using `logsumexp` that can vary the output based on dominant threshold. 
-- [x] Prune layer by layer
-- [x] Prune globally
-- [x] Prune based on the activated feature maps. The experiment result is available at [activation_based_pruning_exp branch](https://github.com/HoangPham6337/iNaturelist_transfer_learning_pytorch/tree/activation_based_pruning_exp)
-- [x] Analyze the feature maps of the model if fine-tuning proves insufficient
+<!-- - [x] Implement an 'Other' classification for non-dominant species. -->
+<!-- - [x] Create a custom `logits` layer (final characterization) using `logsumexp` that can vary the output based on dominant threshold.  -->
+<!-- - [x] Prune layer by layer -->
+<!-- - [x] Prune globally -->
+<!-- - [x] Prune based on the activated feature maps. The experiment result is available at [activation_based_pruning_exp branch](https://github.com/HoangPham6337/iNaturelist_transfer_learning_pytorch/tree/activation_based_pruning_exp) -->
+- [ ] Analyze the feature maps of the model if fine-tuning proves insufficient
 - [ ] Improve real-time performance & efficiency of classification models
 
 ### Why Edge computing?
@@ -38,8 +38,7 @@ Authors of the original works this project based on:
 - [Chen Sun](http://chensun.me/)
 - Andrew Howard
 - [Serge Belongie](http://blogs.cornell.edu/techfaculty/serge-belongie/)
-
-CVPR2018
+-  [Pham Xuan Hoang](https://hoangpham6337.github.io/portfolio/)
 
 **This project is based on the original work from:**
 - [Large Scale Fine-Grained Categorization and Domain-Specific Transfer Learning (CVPR 2018)](https://arxiv.org/abs/1806.06193)
@@ -50,7 +49,8 @@ CVPR2018
 This codebase uses `Pytorch 2.6.0` as its backbone.
 Setting up is fairly straight forward, you can install all the dependencies through:
 ```python
-pip install -r requirements.txt
+   conda env create --name training --file=environment.yml
+   conda activate training
 ```
 
 The `dataset_builder` install instructions can be found by going to this [repo](https://github.com/HoangPham6337/iNaturelist_dataset_builder).
@@ -59,9 +59,9 @@ The `dataset_builder` install instructions can be found by going to this [repo](
 **This project uses a subset of iNaturelist 2017 combined with species from Haute-Garonne. The dataset must be manually downloaded and processed before training.**
 
 ### Dataset Preparation
-We provide a modular and automated pipeline using the `dataset_builder` package. Configuration is handled via `config.yaml`.
+We provide a modular and automated pipeline using the `dataset_builder` package. Configuration is handled via [config.yaml](config.yaml).
 
-### Steps (automated by `dataset_orchestrator.py`)
+### Steps (automated by [dataset_orchestor.py](dataset_orchestrator.py))
 
 1. Crawl species from iNaturalist (Haute-Garonne region)
 2. Analyze dataset structure (class/species breakdown, image counts)
@@ -75,9 +75,14 @@ If any operations fails, a `FailedOperation` is rased and the script will:
 - Print a traceback
 - Exit gracefully
 
-### Configuration file: `config.yaml`
+Fist of all please run [dataset_orchestor.py](dataset_orchestrator.py)
+```bash
+python3 dataset_orchestrator.py
+```
+### Configuration file: [config.yaml](config.yaml)
 This file can be created automatically through the `create_interactive_config.py`.
 
+Normally, you don't want to touch anything in here if you want to recreate what I did. But in case you do want to conduct your test on your own, these are some modifications you should make:
 ```yaml
 global:
   included_classes: ["Aves", "Insecta"]  # Species class to analyze
@@ -107,6 +112,7 @@ Output:
 - `matched_species.json`: Cross-reference results
 - `train.parquet`, `val.parquet`, `dataset_manifest.parquet`: Data splits
 - `plots/`: CDF, PPF, Venn diagrams, class bar charts
+
 
 ## Project Structure
 
