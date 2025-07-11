@@ -43,7 +43,7 @@ total_support_list = get_support_list(
 
 model = convnext_large_builder(
     device,
-    path="/home/tom-maverick/remotedir/models/convnext_full_insect.pth",
+    path="models/convnext_full_nsect_best.pth",
 )
 
 model.eval()
