@@ -60,7 +60,7 @@ def load_checkpoint(checkpoint_path, model, optimizer, scheduler, device):
     print(f"Checkpoint loaded. Resuming from epoch {epoch + 1}")
     return epoch
 
-_, train, val, _, _=  manifest_generator_wrapper(1, export=True)  # type: ignore
+_, train, val, _, _=  manifest_generator_wrapper(1.0, export=True)  # type: ignore
 print("=========================================")
 device = get_device()
 print("=========================================")
@@ -72,7 +72,7 @@ BATCH_SIZE = 64
 NUM_WORKERS = 8
 NUM_EPOCHS = 50
 NUM_SPECIES = len(species_labels.keys())
-NAME = "convnext_full_nsect"
+NAME = "convnext_full_insect"
 ENABLE_EXPERIMENTAL_HYPERPARAM_TUNING = True
 INPUT_SIZE = 160  # Changed from 224 to 160
 
@@ -144,6 +144,7 @@ for epoch in range(start_epoch, NUM_EPOCHS):
         best_acc = val_acc
         best_f1 = macro_f1
         save_model(model, f"{NAME}_best", "models", device, (INPUT_SIZE, INPUT_SIZE))
+        # torch.save(model, f"models/{NAME}.pth")
         print(f"New best model saved!")
 
     # Save periodic checkpoint every N epochs
