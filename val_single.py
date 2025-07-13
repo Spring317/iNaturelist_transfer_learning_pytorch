@@ -1,4 +1,3 @@
-import json
 import pandas as pd
 import torch  # type: ignore
 from typing import List
@@ -8,53 +7,18 @@ from pipeline.utility import (
     get_device,
     get_support_list,
     generate_report,
-    mobile_net_v3_large_builder,
     convnext_large_builder,
     manifest_generator_wrapper,
 )
 from sklearn.metrics import accuracy_score, f1_score, recall_score
 from pipeline.dataset_loader import CustomDataset
 
-def load_model_from_checkpoint(model_path, device):
-    """Load model from checkpoint, handling different save formats."""
-    try:
-        # First try to load as a full model
-        model = torch.load(model_path, weights_only=False, map_location=device)
-        print("Loaded full model successfully")
-        return model
-    except Exception as e:
-        print(f"Failed to load as full model: {e}")
-        
-        try:
-            # Try to load as checkpoint with state_dict
-            checkpoint = torch.load(model_path, map_location=device, weights_only=True)
-            
-            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-                # Checkpoint contains state_dict and metadata
-                num_classes = checkpoint["model_state_dict"]["classifier.2.weight"].shape[0]
-                model = convnext_large_builder(device, num_outputs=num_classes, start_with_weight=False)
-                model.load_state_dict(checkpoint["model_state_dict"])
-                print(f"Loaded model from checkpoint with {num_classes} classes")
-                return model
-                
-            elif isinstance(checkpoint, dict) and "classifier.2.weight" in checkpoint:
-                # Checkpoint is a state_dict directly
-                num_classes = checkpoint["classifier.2.weight"].shape[0]
-                model = convnext_large_builder(device, num_outputs=num_classes, start_with_weight=False)
-                model.load_state_dict(checkpoint)
-                print(f"Loaded model from state_dict with {num_classes} classes")
-                return model
-            else:
-                raise RuntimeError("Unrecognized checkpoint format")
-                
-        except Exception as e2:
-            raise RuntimeError(f"Failed to load model from {model_path}. Tried both full model and checkpoint formats. Errors: {e}, {e2}")
 
 # NNUM_SPECIES = 1000  # Adjust this based on your dataset
 device = get_device()
 BATCH_SIZE = 64
 NUM_WORKERS = 12
-NAME = "mobilenet_v3_large"
+NAME = "convnext_full_insect"
 
 _, _, val_images, species_labels, species_composition = manifest_generator_wrapper(1.0)
 
@@ -72,14 +36,18 @@ val_loader = DataLoader(
     persistent_workers=True,
 )
 
-total_support_list = get_support_list(
-    species_composition, species_names
-)
+total_support_list = get_support_list(species_composition, species_names)
 
-model_path = "models/convnext_full_nsect_best.pth"
-device = get_device()
-model = load_model_from_checkpoint(model_path, device)
-model.eval()
+# model_path = "models/convnext_full_insect_epoch_50.pth"
+# device = get_device()
+# model = load_model_from_checkpoint(model_path, device)
+# model.eval()
+model = convnext_large_builder(
+    device,
+    num_outputs=len(species_names),
+    start_with_weight=True,
+    path="./models/convnext_full_insect_best.pth",
+)
 val_loss, val_correct = 0.0, 0
 
 all_preds: List[int] = []
