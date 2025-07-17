@@ -82,7 +82,7 @@ python3 dataset_orchestrator.py
 ### Configuration file: [config.yaml](config.yaml)
 This file can be created automatically through the `create_interactive_config.py`.
 
-Normally, you don't want to touch anything in here if you want to recreate what I did. But in case you do want to conduct your test on your own, these are some modifications you should make:
+Normally, you don't want to touch anything in here if you want to recreate what I did. But in case you do want to conduct your test on your own, these are some modifications you should     make:
 ```yaml
 global:
   included_classes: ["Aves", "Insecta"]  # Species class to analyze
@@ -92,7 +92,7 @@ global:
 paths:
   src_dataset: "./data/inat2017"  # Source dataset
   dst_dataset: "./data/haute_garonne"  # Target dataset
-  web_crawl_output_json: "./output/haute_garonne.json"  # Path to save crawl result
+  web_crawl_output_json: "./output/haute_garonne.json"  # Path to save crawl result 
   output_dir: "./output"  # Path to save all JSON files
 
 web_crawl:
@@ -113,7 +113,24 @@ Output:
 - `train.parquet`, `val.parquet`, `dataset_manifest.parquet`: Data splits
 - `plots/`: CDF, PPF, Venn diagrams, class bar charts
 
+## Piping models inference:
+1. As an effort of optimizing the model in both accuracy and efficiency, we introduce the model piping strategy:
 
+* **Piping**: Combining several small models in front of the main model to filter out non-dominant species, reducing the computational load on the main model:
+  - **Cache model**: A lightweight model (**mcunet**) that classifies dominant species. These models (1 for now), filter out the species with higher representations in the dataset else returning "Others".
+  - The "Others" class is then mapped to teh full dataset and being processed by the main model to return the final classification.
+  - **Main Model**: A more complex model that trained with the whole dataset, taking in charge of predicting every classes.
+  - Why we are not excluding the classes that are predicted by the cache model? Because everyone deserve a second chance :D. If the cache model predict one dominant class as others, the main model will correct it, increase the accuracy.
+
+
+2. Inferencing steps:
+ - Run this command the run the inference: 
+
+```bash
+python FullPipelineMonteCarloSimulation.py --model both --input_size 160 --runs 10 --samples 500 --out_prefix myexp
+```
+
+Feel free to change options with --help flags.
 ## Project Structure
 
 All pipeline core functions has been implemented in `pipeline/`
