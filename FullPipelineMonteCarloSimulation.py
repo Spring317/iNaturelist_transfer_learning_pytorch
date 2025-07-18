@@ -3,7 +3,7 @@ import os
 import random
 from collections import defaultdict
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Iterable
 import numpy as np
 import onnxruntime as ort
 import pandas as pd
@@ -77,6 +77,8 @@ class FullPipelineMonteCarloSimulation:
         self.big_species_labels: Dict[int, str] = big_model_species_labels
         self.big_species_name = list(self.big_species_labels.values())
         self.is_big_incv3 = is_big_inception_v3
+        self.small_species_preds: list = []
+        self.global_species_preds: list = []
 
     def _get_small_model_other_label(self) -> int:
         species_labels_flip: Dict[str, int] = dict(
@@ -174,36 +176,41 @@ class FullPipelineMonteCarloSimulation:
             print(e)
             return None
 
-    def infer_with_routing(self, image_path: str, ground_truth: int):
+    def infer_with_routing(
+        self, image_path: str, ground_truth: int
+    ) -> Optional[Tuple[int, int, bool]]:
+        is_small = True
         small_result = self._infer_one(ModelType.SMALL_MODEL, image_path)
         if small_result is None:
             print(f"Small model returns no result for {image_path}")
             return None
-
         small_pred, _ = small_result
         if small_pred == self.small_other_label:
+            is_small = False
             big_result = self._infer_one(ModelType.BIG_MODEL, image_path)
             if big_result is None:
                 print(f"Big model returns no result for {image_path}")
                 return None
-            # if not self._is_prediction_belongs_to_global_dataset(big_result[0]):
-            #     return ground_truth, self.not_belong_to_global_idx, 1
+            return big_result[0], ground_truth, is_small
+        return small_result[0], ground_truth, is_small
+        # if not self._is_prediction_belongs_to_global_dataset(big_result[0]):
+        #     return ground_truth, self.not_belong_to_global_idx, 1
 
-            big_species_name = self.big_species_labels.get(big_result[0], None)
-            if big_species_name is None:
-                print(f"Failed to get species name for big label: {big_result[0]}")
-
-                return None
-
-            global_pred = self._translate_prediction_to_global_label(
-                big_result[0], ModelType.BIG_MODEL
-            )
-            return ground_truth, global_pred, 1
-        else:
-            global_pred = self._translate_prediction_to_global_label(
-                small_result[0], ModelType.SMALL_MODEL
-            )
-            return ground_truth, global_pred, 0
+        # big_species_name = self.big_species_labels.get(big_result[0], None)
+        # if big_species_name is None:
+        #     print(f"Failed to get species name for big label: {big_result[0]}")
+        #
+        #     return None
+        #
+        # global_pred = self._translate_prediction_to_global_label(
+        #     big_result[0], ModelType.BIG_MODEL
+        # )
+        # return ground_truth, global_pred, 1
+        # else:
+        #     global_pred = self._translate_prediction_to_global_label(
+        #         small_result[0], ModelType.SMALL_MODEL
+        #     )
+        #     return ground_truth, global_pred, 0
 
     def run(self, num_runs: int, sample_size: int = 1000, save_path=None):
         other_preds = 0
@@ -229,13 +236,34 @@ class FullPipelineMonteCarloSimulation:
                 start = time.perf_counter()
                 result = self.infer_with_routing(image_path, species_id)
                 end = time.perf_counter()
-                time_per_image.append(end - start)
+                # if result is None:
+                #     print(f"Model returns no result for {image_path}")
+                #     continue
                 if result is not None:
-                    ground_truth, pred, is_other_small_model = result
-                    other_preds += is_other_small_model
-                    y_true.append(ground_truth)
-                    y_pred.append(pred)
+                    pred, gt, is_small = result
+                    time_per_image.append(end - start)
+                    if is_small:
+                        self.small_species_preds.append(pred)
+                        global_pred = self._translate_prediction_to_global_label(
+                            pred, ModelType.SMALL_MODEL
+                        )
+                        y_true.append(gt)
+                        y_pred.append(global_pred)
 
+                    else:
+                        self.global_species_preds.append(pred)
+                        global_pred = self._translate_prediction_to_global_label(
+                            pred, ModelType.BIG_MODEL
+                        )
+                        y_true.append(gt)
+                        y_pred.append(global_pred)
+
+                # Map the result with the global species labels for evaluations
+                # if result is not None:
+                #     ground_truth, pred, is_other_small_model = result
+                #     other_preds += is_other_small_model
+                #     y_true.append(ground_truth)
+                #     y_pred.append(pred)
             all_true.extend(y_true)
             all_pred.extend(y_pred)
 
@@ -253,6 +281,7 @@ class FullPipelineMonteCarloSimulation:
 
         if save_path:
             accuracy = accuracy_score(all_true, all_pred)
+            print(f"Accuracy: {accuracy:.4f}")
             df = generate_report(
                 all_true,
                 all_pred,
