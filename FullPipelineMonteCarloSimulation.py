@@ -1,17 +1,15 @@
 import json
 import os
 import random
-import time
 from collections import defaultdict
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
-
 import numpy as np
 import onnxruntime as ort
 import pandas as pd
 import scipy.special
 from onnxruntime import InferenceSession
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import accuracy_score
 from tqdm import tqdm
 
 from pipeline.utility import (
@@ -20,7 +18,8 @@ from pipeline.utility import (
     manifest_generator_wrapper,
     preprocess_eval_opencv,
 )
-import argparse
+import time
+import statistics as stats
 
 
 class ModelType(Enum):
@@ -42,7 +41,6 @@ class FullPipelineMonteCarloSimulation:
         big_model_input_size: Tuple[int, int] = (299, 299),
         is_big_inception_v3: bool = True,
         providers: List[str] = ["CPUExecutionProvider", "CPUExecutionProvider"],
-        single_model_mode: bool = False,  # <-- add this
     ) -> None:
         self.small_session = ort.InferenceSession(
             small_model_path, providers=[providers[0]]
@@ -54,17 +52,19 @@ class FullPipelineMonteCarloSimulation:
         self.big_input_name = self.big_session.get_inputs()[0].name
         self.small_input_size = small_model_input_size
         self.big_input_size = big_model_input_size
-
         self.global_data_manifests = global_data_manifests
         self.global_species_labels = global_species_labels
         self.global_species_names = list(self.global_species_labels.values())
         self.global_total_support_list = global_total_support_list
         self.global_labels_images: Dict[int, List[str]] = defaultdict(list)
+
         for image_path, species_id in self.global_data_manifests:
             self.global_labels_images[species_id].append(image_path)
+
         self.global_total_images = sum(
             len(imgs) for imgs in self.global_labels_images.values()
         )
+
         self.global_species_probs = {
             int(species_id): len(images) / self.global_total_images
             for species_id, images in self.global_labels_images.items()
@@ -76,9 +76,7 @@ class FullPipelineMonteCarloSimulation:
         self.small_other_label = self._get_small_model_other_label()
         self.big_species_labels: Dict[int, str] = big_model_species_labels
         self.big_species_name = list(self.big_species_labels.values())
-
         self.is_big_incv3 = is_big_inception_v3
-        self.single_model_mode = single_model_mode  # <-- add this
 
     def _get_small_model_other_label(self) -> int:
         species_labels_flip: Dict[str, int] = dict(
@@ -177,122 +175,81 @@ class FullPipelineMonteCarloSimulation:
             return None
 
     def infer_with_routing(self, image_path: str, ground_truth: int):
-        if self.single_model_mode:
-            # Only use the big model (ConvNeXt)
+        small_result = self._infer_one(ModelType.SMALL_MODEL, image_path)
+        if small_result is None:
+            print(f"Small model returns no result for {image_path}")
+            return None
+
+        small_pred, _ = small_result
+        if small_pred == self.small_other_label:
             big_result = self._infer_one(ModelType.BIG_MODEL, image_path)
             if big_result is None:
                 print(f"Big model returns no result for {image_path}")
                 return None
-            if not self._is_prediction_belongs_to_global_dataset(big_result[0]):
-                return ground_truth, self.not_belong_to_global_idx, 1
+            # if not self._is_prediction_belongs_to_global_dataset(big_result[0]):
+            #     return ground_truth, self.not_belong_to_global_idx, 1
+
+            big_species_name = self.big_species_labels.get(big_result[0], None)
+            if big_species_name is None:
+                print(f"Failed to get species name for big label: {big_result[0]}")
+
+                return None
 
             global_pred = self._translate_prediction_to_global_label(
                 big_result[0], ModelType.BIG_MODEL
             )
             return ground_truth, global_pred, 1
         else:
-            # Original two-stage logic
-            small_result = self._infer_one(ModelType.SMALL_MODEL, image_path)
-            if small_result is None:
-                print(f"Small model returns no result for {image_path}")
-                return None
-            small_pred, _ = small_result
-
-            if small_pred == self.small_other_label:
-                big_result = self._infer_one(ModelType.BIG_MODEL, image_path)
-                if big_result is None:
-                    print(f"Big model returns no result for {image_path}")
-                    return None
-                if not self._is_prediction_belongs_to_global_dataset(big_result[0]):
-                    return ground_truth, self.not_belong_to_global_idx, 1
-
-                global_pred = self._translate_prediction_to_global_label(
-                    big_result[0], ModelType.BIG_MODEL
-                )
-                return ground_truth, global_pred, 1
-            else:
-                global_pred = self._translate_prediction_to_global_label(
-                    small_result[0], ModelType.SMALL_MODEL
-                )
-                return ground_truth, global_pred, 0
+            global_pred = self._translate_prediction_to_global_label(
+                small_result[0], ModelType.SMALL_MODEL
+            )
+            return ground_truth, global_pred, 0
 
     def run(self, num_runs: int, sample_size: int = 1000, save_path=None):
         other_preds = 0
         all_true, all_pred = [], []
-
-        # Timing lists for each model
-        small_times = []
-        big_times = []
-        total_images = 0
-
-        pipeline_start = time.perf_counter()
-
+        time_per_image = []
         for run in range(num_runs):
             y_true: List[int] = []
             y_pred: List[int] = []
+
             sampled_species = self._create_stratified_weighted_sample(sample_size)
 
             for species_id in tqdm(
                 sampled_species, desc=f"Run {run + 1}/{num_runs}", leave=False
             ):
                 image_list = self.global_labels_images[int(species_id)]
+
                 if not image_list:
                     print("No image found")
                     continue
+
                 image_path = random.choice(image_list)
 
-                # Inference with timing
-                if self.single_model_mode:
-                    t0 = time.perf_counter()
-                    result = self.infer_with_routing(image_path, species_id)
-                    t1 = time.perf_counter()
-                    big_times.append(t1 - t0)
-                else:
-                    t0 = time.perf_counter()
-                    small_result = self._infer_one(ModelType.SMALL_MODEL, image_path)
-                    t1 = time.perf_counter()
-                    small_times.append(t1 - t0)
-                    if small_result is None:
-                        print(f"Small model returns no result for {image_path}")
-                        continue
-                    small_pred, _ = small_result
-
-                    if small_pred == self.small_other_label:
-                        t2 = time.perf_counter()
-                        big_result = self._infer_one(ModelType.BIG_MODEL, image_path)
-                        t3 = time.perf_counter()
-                        big_times.append(t3 - t2)
-                        if big_result is None:
-                            print(f"Big model returns no result for {image_path}")
-                            continue
-                        result = self.infer_with_routing(image_path, species_id)
-                    else:
-                        result = self.infer_with_routing(image_path, species_id)
-
+                start = time.perf_counter()
+                result = self.infer_with_routing(image_path, species_id)
+                end = time.perf_counter()
+                time_per_image.append(end - start)
                 if result is not None:
                     ground_truth, pred, is_other_small_model = result
                     other_preds += is_other_small_model
                     y_true.append(ground_truth)
                     y_pred.append(pred)
-                    total_images += 1
 
             all_true.extend(y_true)
             all_pred.extend(y_pred)
 
-        pipeline_end = time.perf_counter()
-        total_time = pipeline_end - pipeline_start
-        avg_small_time = sum(small_times) / len(small_times) if small_times else 0
-        avg_big_time = sum(big_times) / len(big_times) if big_times else 0
-        throughput = total_images / total_time if total_time > 0 else 0
-
         total_support_list = get_support_list(
             self.global_total_support_list, self.global_species_names
         )
-        num_pred_outside_global = sum(
-            [1 for pred in all_pred if pred == self.not_belong_to_global_idx]
-        )
+        # num_pred_outside_global = sum(
+        #     [1 for pred in all_pred if pred == self.not_belong_to_global_idx]
+        # )
         print(f"Total 'Other' prediction by small model: {other_preds}")
-        print(f"Total prediction outside the test set: {num_pred_outside_global}")
+        # print(f"Total prediction outside the test set: {num_pred_outside_global}")
+        print(f"Average time per image: {stats.fmean(time_per_image) * 1000:.2f} ms")
+        print(f"Throughput: {1.0 / stats.fmean(time_per_image):.2f} fps")
+        # total_support_list.append(num_pred_outside_global)
 
         if save_path:
             accuracy = accuracy_score(all_true, all_pred)
@@ -304,95 +261,27 @@ class FullPipelineMonteCarloSimulation:
                 float(accuracy),
             )
 
-            # Save benchmark metrics
-            metrics = {
-                "total_images": total_images,
-                "total_time_sec": total_time,
-                "throughput_fps": throughput,
-                "avg_small_model_time_ms": avg_small_time * 1000,
-                "avg_big_model_time_ms": avg_big_time * 1000,
-                "small_model_calls": len(small_times),
-                "big_model_calls": len(big_times),
-                "accuracy": accuracy,
-                "other_preds": other_preds,
-                "pred_outside_global": num_pred_outside_global,
-            }
-            metrics_df = pd.DataFrame([metrics])
             os.makedirs(save_path, exist_ok=True)
-            metrics_df.to_csv(
-                os.path.join(save_path, "pipeline_benchmark_metrics.csv"), index=False
-            )
 
             with pd.option_context(
                 "display.max_rows", None, "display.max_columns", None
             ):
-                model_name = "pipeline_convnext_full"
+                model_name = "pipeline_mcunet_convnext_full"
                 df.to_csv(os.path.join(save_path, f"{model_name}.csv"))
-
-            # Confusion matrix
-            cm = confusion_matrix(
-                all_true, all_pred, labels=list(range(len(self.global_species_names)))
-            )
-            cm_df = pd.DataFrame(
-                cm, index=self.global_species_names, columns=self.global_species_names
-            )
-            cm_df.to_csv(os.path.join(save_path, "confusion_matrix.csv"))
-
-            print("\n=== Benchmark Results ===")
-            for k, v in metrics.items():
-                print(f"{k}: {v}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--model",
-        choices=["small", "big", "both"],
-        default="both",
-        help="Which model(s) to benchmark: small, big, or both (two-stage pipeline)",
-    )
-    parser.add_argument(
-        "--input_size",
-        type=int,
-        default=160,
-        help="Input size for both models (square)",
-    )
-    parser.add_argument(
-        "--runs", type=int, default=15, help="Number of Monte Carlo runs"
-    )
-    parser.add_argument("--samples", type=int, default=1000, help="Sample size per run")
-    parser.add_argument(
-        "--out_prefix",
-        type=str,
-        default="benchmark",
-        help="Prefix for output CSV files",
-    )
-    args = parser.parse_args()
-
     threshold = 0.5
+
     small_image_data, _, _, small_species_labels, _ = manifest_generator_wrapper(
         threshold
     )
     global_image_data, _, _, global_species_labels, global_species_composition = (
         manifest_generator_wrapper(1.0)
     )
-    with open("./haute_garonne/dataset_species_labels.json") as full_bird_insect_labels:
+    with open("haute_garonne/dataset_species_labels.json") as full_bird_insect_labels:
         big_species_labels = json.load(full_bird_insect_labels)
         big_species_labels = {int(k): v for k, v in big_species_labels.items()}
-
-    # Model selection logic
-    if args.model == "big":
-        single_model_mode = True
-        model_desc = "convnext_only"
-    elif args.model == "small":
-        single_model_mode = True
-        model_desc = "mcunet_only"
-    else:
-        single_model_mode = False
-        model_desc = "mcunet_convnext_pipeline"
-
-    # Input size logic (you can expand this if you want different sizes for each model)
-    input_size = (args.input_size, args.input_size)
 
     pipeline = FullPipelineMonteCarloSimulation(
         "models/mcunet-in2-haute-garonne_8_best.onnx",
@@ -403,10 +292,9 @@ if __name__ == "__main__":
         small_species_labels,
         big_species_labels,
         is_big_inception_v3=False,
-        small_model_input_size=input_size,
-        big_model_input_size=input_size,
+        small_model_input_size=(160, 160),
+        big_model_input_size=(160, 160),
         providers=["CUDAExecutionProvider", "CUDAExecutionProvider"],
-        single_model_mode=single_model_mode,
     )
-    out_dir = f"./{args.out_prefix}_{model_desc}_{args.input_size}"
-    pipeline.run(args.runs, args.samples, out_dir)
+
+    pipeline.run(1, 1000, "./baseline_benchmark")

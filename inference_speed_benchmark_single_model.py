@@ -25,7 +25,7 @@ class InferenceBenchmarkSingleModel:
         model_species_labels: Dict[int, str],
         model_input_size: Tuple[int, int] = (224, 224),
         is_big_inception_v3: bool = False,
-        providers: str = "CPUExecutionProvider"
+        providers: str = "CPUExecutionProvider",
     ) -> None:
         self.session = ort.InferenceSession(model_path, providers=[providers])
         self.input_name = self.session.get_inputs()[0].name
@@ -36,7 +36,9 @@ class InferenceBenchmarkSingleModel:
         self.global_labels_images: Dict[int, List[str]] = defaultdict(list)
         for image_path, species_id in self.global_data_manifests:
             self.global_labels_images[species_id].append(image_path)
-        self.global_total_images = sum(len(imgs) for imgs in self.global_labels_images.values())
+        self.global_total_images = sum(
+            len(imgs) for imgs in self.global_labels_images.values()
+        )
         self.global_species_probs = {
             int(species_id): len(images) / self.global_total_images
             for species_id, images in self.global_labels_images.items()
@@ -45,24 +47,26 @@ class InferenceBenchmarkSingleModel:
         self.is_big_incv3 = is_big_inception_v3
         self.model_species_labels = model_species_labels
         self.other_labels = self._get_other_label()
-    
-    
-    def _get_other_label(self) -> int:
-        species_labels_flip: Dict[str, int] = dict((v, k) for k, v in self.model_species_labels.items())
-        return species_labels_flip.get("Other", -1)
 
+    def _get_other_label(self) -> int:
+        species_labels_flip: Dict[str, int] = dict(
+            (v, k) for k, v in self.model_species_labels.items()
+        )
+        return species_labels_flip.get("Other", -1)
 
     def _create_stratified_weighted_sample(self, sample_size: int):
         sampled_species = list(self.global_species_labels.keys())
         remaining_k: int = sample_size - len(sampled_species)
         sampled_species += random.choices(
             population=sampled_species,
-            weights=[self.global_species_probs[int(sid)] for sid in self.global_species_labels.keys()],
-            k=remaining_k
+            weights=[
+                self.global_species_probs[int(sid)]
+                for sid in self.global_species_labels.keys()
+            ],
+            k=remaining_k,
         )
         random.shuffle(sampled_species)
-        return [int(label) for label in sampled_species] 
-
+        return [int(label) for label in sampled_species]
 
     def _infer_one(self, image_path: str) -> Optional[Tuple[int, float, float]]:
         session: InferenceSession = self.session
@@ -74,7 +78,9 @@ class InferenceBenchmarkSingleModel:
             is_incv3 = False
 
         try:
-            img = preprocess_eval_opencv(image_path, *input_size, is_inception_v3=is_incv3)
+            img = preprocess_eval_opencv(
+                image_path, *input_size, is_inception_v3=is_incv3
+            )
             start = timeit.default_timer()
             outputs = session.run(None, {input_name: img})
             end = timeit.default_timer() - start
@@ -86,7 +92,6 @@ class InferenceBenchmarkSingleModel:
             print(e)
             return None
 
-
     def infer(self, image_path: str, ground_truth: int):
         result = self._infer_one(image_path)
         if result is None:
@@ -95,19 +100,16 @@ class InferenceBenchmarkSingleModel:
 
         return result[0], result[2]
 
-
-    def run(
-        self,
-        num_runs: int,
-        sample_size: int 
-    ):
+    def run(self, num_runs: int, sample_size: int):
         all_elapsed_times: List[float] = []
         other_data: List[str] = []
         for run in range(num_runs):
-            elapsed_times : List[float] = []
+            elapsed_times: List[float] = []
             sampled_species = self._create_stratified_weighted_sample(sample_size)
 
-            for species_id in tqdm(sampled_species, desc=f"Run {run + 1}/{num_runs}", leave=False):
+            for species_id in tqdm(
+                sampled_species, desc=f"Run {run + 1}/{num_runs}", leave=False
+            ):
                 image_list = self.global_labels_images[int(species_id)]
                 if not image_list:
                     print("No image found")
@@ -136,25 +138,28 @@ class InferenceBenchmarkSingleModel:
             json.dump(other_data, output)
 
 
-
 if __name__ == "__main__":
-    global_image_data , _, _, global_species_labels, global_species_composition = manifest_generator_wrapper(1.0)
-    with open("./data/haute_garonne/dataset_species_labels_full_bird_insect.json") as data:
+    global_image_data, _, _, global_species_labels, global_species_composition = (
+        manifest_generator_wrapper(1.0)
+    )
+    with open(
+        "haute_garonne/dataset_species_labels.json",
+    ) as data:
         model_species_labels = json.load(data)
-        model_species_labels = {int(k) : v for k, v in model_species_labels.items()}
-        model_species_labels_inverted = {v : k for k, v in model_species_labels.items()}
-    
-    with open("./inference_results/pred_other_result_50.json") as infer_data:
-        pred_results: List[str] = json.load(infer_data)
+        model_species_labels = {int(k): v for k, v in model_species_labels.items()}
+        model_species_labels_inverted = {v: k for k, v in model_species_labels.items()}
 
+    # with open("./inference_results/pred_other_result_50.json") as infer_data:
+    #     pred_results: List[str] = json.load(infer_data)
 
     pipeline = InferenceBenchmarkSingleModel(
-        "/home/tom-maverick/Documents/Final Results/MobileNetV3/mobilenet_v3_large_50.onnx",
+        # "models/convnext_full_insect_best.onnx",
+        "models/mcunet-in2-haute-garonne_8_best.onnx",
         global_image_data,
         global_species_labels,
         model_species_labels,
         # is_big_inception_v3=True,
-        # model_input_size=(299, 299),
-        providers="CPUExecutionProvider"
+        model_input_size=(160, 160),
+        providers="CUDAExecutionProvider",
     )
     pipeline.run(1, 1000)
