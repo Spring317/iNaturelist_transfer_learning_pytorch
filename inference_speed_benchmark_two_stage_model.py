@@ -193,7 +193,6 @@ if __name__ == "__main__":
         is_big_inception_v3=False,
         small_model_input_size=(160, 160),
         big_model_input_size=(160, 160),
-        providers=["CPUExecutionProvider", "CPUExecutionProvider"],
+        providers=["CUDAExecutionProvider", "CUDAExecutionProvider"],
     )
     pipeline.run(1, 1000)
-

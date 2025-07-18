@@ -140,7 +140,7 @@ class InferenceBenchmarkSingleModel:
 
 if __name__ == "__main__":
     global_image_data, _, _, global_species_labels, global_species_composition = (
-        manifest_generator_wrapper(1.0)
+        manifest_generator_wrapper(0.5)
     )
     with open(
         "haute_garonne/dataset_species_labels.json",
@@ -153,8 +153,8 @@ if __name__ == "__main__":
     #     pred_results: List[str] = json.load(infer_data)
 
     pipeline = InferenceBenchmarkSingleModel(
-        # "models/convnext_full_insect_best.onnx",
-        "models/mcunet-in2-haute-garonne_8_best.onnx",
+        "models/convnext_full_insect_best.onnx",
+        # "models/mcunet-in2-haute-garonne_8_best.onnx",
         global_image_data,
         global_species_labels,
         model_species_labels,

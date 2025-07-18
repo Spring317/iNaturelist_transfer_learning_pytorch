@@ -20,6 +20,7 @@ from pipeline.utility import (
 )
 import time
 import statistics as stats
+import argparse
 
 
 class ModelType(Enum):
@@ -212,7 +213,13 @@ class FullPipelineMonteCarloSimulation:
         #     )
         #     return ground_truth, global_pred, 0
 
-    def run(self, num_runs: int, sample_size: int = 1000, save_path=None):
+    def run(
+        self,
+        num_runs: int,
+        sample_size: int = 1000,
+        save_path=None,
+        model_type: str = "both",
+    ) -> None:
         other_preds = 0
         all_true, all_pred = [], []
         time_per_image = []
@@ -232,31 +239,62 @@ class FullPipelineMonteCarloSimulation:
                     continue
 
                 image_path = random.choice(image_list)
-
-                start = time.perf_counter()
-                result = self.infer_with_routing(image_path, species_id)
-                end = time.perf_counter()
-                # if result is None:
-                #     print(f"Model returns no result for {image_path}")
-                #     continue
-                if result is not None:
-                    pred, gt, is_small = result
+                if model_type == "small":
+                    start = time.perf_counter()
+                    result = self._infer_one(ModelType.SMALL_MODEL, image_path)
+                    end = time.perf_counter()
                     time_per_image.append(end - start)
-                    if is_small:
-                        self.small_species_preds.append(pred)
-                        global_pred = self._translate_prediction_to_global_label(
-                            pred, ModelType.SMALL_MODEL
-                        )
-                        y_true.append(gt)
-                        y_pred.append(global_pred)
+                    if result is None:
+                        print(f"Small model returns no result for {image_path}")
+                        continue
+                    pred, _ = result
+                    global_pred = self._translate_prediction_to_global_label(
+                        pred, ModelType.SMALL_MODEL
+                    )
+                    y_true.append(species_id)
+                    y_pred.append(global_pred)
+                    if pred == self.small_other_label:
+                        other_preds += 1
 
-                    else:
-                        self.global_species_preds.append(pred)
-                        global_pred = self._translate_prediction_to_global_label(
-                            pred, ModelType.BIG_MODEL
-                        )
-                        y_true.append(gt)
-                        y_pred.append(global_pred)
+                elif model_type == "big":
+                    start = time.perf_counter()
+                    result = self._infer_one(ModelType.BIG_MODEL, image_path)
+                    end = time.perf_counter()
+                    time_per_image.append(end - start)
+                    if result is None:
+                        print(f"Big model returns no result for {image_path}")
+                        continue
+                    pred, _ = result
+                    global_pred = self._translate_prediction_to_global_label(
+                        pred, ModelType.BIG_MODEL
+                    )
+                    y_true.append(species_id)
+                    y_pred.append(global_pred)
+                else:
+                    start = time.perf_counter()
+                    result = self.infer_with_routing(image_path, species_id)
+                    end = time.perf_counter()
+                    # if result is None:
+                    #     print(f"Model returns no result for {image_path}")
+                    #     continue
+                    if result is not None:
+                        pred, gt, is_small = result
+                        time_per_image.append(end - start)
+                        if is_small:
+                            self.small_species_preds.append(pred)
+                            global_pred = self._translate_prediction_to_global_label(
+                                pred, ModelType.SMALL_MODEL
+                            )
+                            y_true.append(gt)
+                            y_pred.append(global_pred)
+
+                        else:
+                            self.global_species_preds.append(pred)
+                            global_pred = self._translate_prediction_to_global_label(
+                                pred, ModelType.BIG_MODEL
+                            )
+                            y_true.append(gt)
+                            y_pred.append(global_pred)
 
                 # Map the result with the global species labels for evaluations
                 # if result is not None:
@@ -300,7 +338,65 @@ class FullPipelineMonteCarloSimulation:
 
 
 if __name__ == "__main__":
-    threshold = 0.5
+    arg_parser = argparse.ArgumentParser(
+        description="Run the full pipeline Monte Carlo simulation for bird and insect species classification."
+    )
+    arg_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="Threshold for species classification. Default is 0.5.",
+    )
+    arg_parser.add_argument(
+        "--num_runs",
+        type=int,
+        default=1,
+        help="Number of runs for the Monte Carlo simulation. Default is 1.",
+    )
+    arg_parser.add_argument(
+        "--sample_size",
+        type=int,
+        default=1000,
+        help="Sample size for each run of the simulation. Default is 1000.",
+    )
+    arg_parser.add_argument(
+        "--save_path",
+        type=str,
+        default="./baseline_benchmark",
+        help="Path to save the results. Default is './baseline_benchmark'.",
+    )
+    arg_parser.add_argument(
+        "--model_type",
+        type=str,
+        choices=["small", "big", "both"],
+        default="both",
+        help="Type of model to run the simulation with. Options are 'small', 'big', or 'both'. Default is 'both'.",
+    )
+    arg_parser.add_argument(
+        "--providers",
+        type=str,
+        nargs="+",
+        default=["CUDAExecutionProvider", "CUDAExecutionProvider"],
+        help="List of ONNX Runtime providers to use. Default is ['CUDAExecutionProvider', 'CUDAExecutionProvider'].",
+    )
+    arg_parser.add_argument(
+        "--small_model_input_size",
+        type=int,
+        nargs=2,
+        default=(160, 160),
+        help="Input size for the small model. Default is (160, 160).",
+    )
+    arg_parser.add_argument(
+        "--big_model_input_size",
+        type=int,
+        nargs=2,
+        default=(160, 160),
+        help="Input size for the big model. Default is (160, 160).",
+    )
+
+    args = arg_parser.parse_args()
+
+    threshold = args.threshold
 
     small_image_data, _, _, small_species_labels, _ = manifest_generator_wrapper(
         threshold
@@ -321,9 +417,9 @@ if __name__ == "__main__":
         small_species_labels,
         big_species_labels,
         is_big_inception_v3=False,
-        small_model_input_size=(160, 160),
-        big_model_input_size=(160, 160),
+        small_model_input_size=args.small_model_input_size,
+        big_model_input_size=args.big_model_input_size,
         providers=["CUDAExecutionProvider", "CUDAExecutionProvider"],
     )
 
-    pipeline.run(1, 1000, "./baseline_benchmark")
+    pipeline.run(1, 1000, "./baseline_benchmark", model_type=args.model_type)
