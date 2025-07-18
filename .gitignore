@@ -4,6 +4,7 @@ models/
 .python-version
 .venv/
 *.pyc
-# haute_garonne/
+haute_garonne/
 train_dataset.pth 
 val_dataset.pth
+
