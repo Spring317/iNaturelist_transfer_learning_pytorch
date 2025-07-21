@@ -21,6 +21,7 @@ from pipeline.utility import (
 import time
 import statistics as stats
 import argparse
+from data_prep.data_loader import DatasetCreator
 
 
 class ModelType(Enum):
@@ -50,13 +51,12 @@ class NFullPipelineMonteCarloSimulation:
 
     def __init__(
         self,
-        small_model_path: list,
+        small_model_path: List[str],
         big_model_path: str,
-        number_of_small_models: int,
         global_data_manifests: List[Tuple[str, int]],
         global_species_labels: Dict[int, str],
         global_total_support_list: Dict[str, int],
-        small_model_species_labels: Dict[int, str],
+        small_model_species_labels: List[Dict[int, str]],
         big_model_species_labels: Dict[int, str],
         small_model_input_size: Tuple[int, int] = (224, 224),
         big_model_input_size: Tuple[int, int] = (299, 299),
@@ -72,7 +72,7 @@ class NFullPipelineMonteCarloSimulation:
             big_model_path, providers=[self.providers[1]]
         )
         # self.small_input_name = self.small_session.get_inputs()[0].name
-        self.number_of_small_models = number_of_small_models
+        self.number_of_small_models = len(small_model_path)
         self.big_input_name = self.big_session.get_inputs()[0].name
         self.small_input_size = small_model_input_size
         self.big_input_size = big_model_input_size
@@ -96,20 +96,30 @@ class NFullPipelineMonteCarloSimulation:
 
         self.not_belong_to_global_idx = len(self.global_species_labels)
 
-        self.small_species_labels: Dict[int, str] = small_model_species_labels
-        self.small_other_label = self._get_small_model_other_label()
+        self.small_species_labels: List[Dict[int, str]] = small_model_species_labels
+        self.small_other_labels: List[int] = []
+        for small_species_lab in self.small_species_labels:
+            other_label = self._get_small_model_other_label(small_species_lab)
+            if other_label != -1:
+                self.small_other_labels.append(other_label)
+            else:
+                print(
+                    f"Warning: 'Other' label not found in small model species labels: {small_species_lab}"
+                )
         self.big_species_labels: Dict[int, str] = big_model_species_labels
         self.big_species_name = list(self.big_species_labels.values())
         self.is_big_incv3 = is_big_inception_v3
         self.small_species_preds: Dict = {}
         self.global_species_preds: list = []
+        self.small_model_call: int = 0
+        self.big_model_call: int = 0
 
-    def _get_small_model_other_label(self) -> int:
+    def _get_small_model_other_label(self, small_species_lab) -> int:
         """
         Get the label for 'Other' species in the small model.
         """
         species_labels_flip: Dict[str, int] = dict(
-            (v, k) for k, v in self.small_species_labels.items()
+            (v, k) for k, v in small_species_lab.items()
         )
         return species_labels_flip.get("Other", -1)
 
@@ -136,7 +146,7 @@ class NFullPipelineMonteCarloSimulation:
         return True
 
     def _translate_prediction_to_global_label(
-        self, prediction: int, model_type: ModelType
+        self, prediction: int, model_type: ModelType, small_species_labs: Dict[int, str]
     ) -> int:
         """
         Map the prediction from the small or big model to the global species label.
@@ -162,7 +172,7 @@ class NFullPipelineMonteCarloSimulation:
                 return self.not_belong_to_global_idx
             return global_species_labels[0]
         else:
-            small_species_label = self.small_species_labels.get(prediction, None)
+            small_species_label = small_species_labs.get(prediction, None)
             global_species_labels = list(
                 filter(
                     lambda key: self.global_species_labels[key] == small_species_label,
@@ -252,9 +262,11 @@ class NFullPipelineMonteCarloSimulation:
             the ground truth species label, and a boolean indicating if the small model was used.
         """
         i = 0
-        for model_path in self.small_model_path:
+        for model_path, small_other_label in zip(
+            self.small_model_path, self.small_other_labels
+        ):
             print(
-                f"Running small model {model_path}/{self.number_of_small_models} for {image_path}"
+                f"Running small model {i + 1}/{self.number_of_small_models} for {image_path}"
             )
             small_result = self._infer_one(
                 ModelType.SMALL_MODEL, image_path, model_path
@@ -263,21 +275,21 @@ class NFullPipelineMonteCarloSimulation:
                 print(f"Small model returns no result for {image_path}")
                 return None
             small_pred, _ = small_result
-            # Check if the small model prediction is 'Other'
-            # If it is, continue to the next small model
-            if small_pred == self.small_other_label:
-                i += 1
-                continue
-            # If the small model prediction is not 'Other', return the result
-            return small_result[0], ground_truth, i
-
-        print(
-            f"All small models returned 'Other' for {image_path}, switching to big model"
-        )
+            if small_pred != small_other_label:
+                # If the small model prediction is not 'Other', return the result
+                print("Predict complete, next image")
+                self.small_model_call += 1
+                return small_result[0], ground_truth, i
+            print(
+                f"model return Other, try next small model {i + 1}/{self.number_of_small_models}"
+            )
+            i += 1
+        print(f"All small models returned 'Other', running big model for {image_path}")
         big_result = self._infer_one(ModelType.BIG_MODEL, image_path)
         if big_result is None:
             print(f"Big model returns no result for {image_path}")
             return None
+        self.big_model_call += 1
         return big_result[0], ground_truth, i
 
     def run(
@@ -296,9 +308,7 @@ class NFullPipelineMonteCarloSimulation:
 
             sampled_species = self._create_stratified_weighted_sample(sample_size)
 
-            for species_id in tqdm(
-                sampled_species, desc=f"Run {run + 1}/{num_runs}", leave=False
-            ):
+            for species_id in sampled_species:
                 image_list = self.global_labels_images[int(species_id)]
 
                 if not image_list:
@@ -319,19 +329,19 @@ class NFullPipelineMonteCarloSimulation:
                         # Save the small model prediction and the small_counter into the small_species_preds dict
                         self.small_species_preds[small_counter] = pred
 
-                        global_pred = self._translate_prediction_to_global_label(
-                            pred, ModelType.SMALL_MODEL
-                        )
-                        y_true.append(gt)
-                        y_pred.append(global_pred)
-
-                    else:
-                        self.global_species_preds.append(pred)
-                        global_pred = self._translate_prediction_to_global_label(
-                            pred, ModelType.BIG_MODEL
-                        )
-                        y_true.append(gt)
-                        y_pred.append(global_pred)
+                    #     global_pred = self._translate_prediction_to_global_label(
+                    #         pred, ModelType.SMALL_MODEL
+                    #     )
+                    #     y_true.append(gt)
+                    #     y_pred.append(global_pred)
+                    #
+                    # else:
+                    #     self.global_species_preds.append(pred)
+                    #     global_pred = self._translate_prediction_to_global_label(
+                    #         pred, ModelType.BIG_MODEL
+                    #     )
+                    #     y_true.append(gt)
+                    #     y_pred.append(global_pred)
 
                 # Map the result with the global species labels for evaluations
                 # if result is not None:
@@ -348,30 +358,33 @@ class NFullPipelineMonteCarloSimulation:
         # num_pred_outside_global = sum(
         #     [1 for pred in all_pred if pred == self.not_belong_to_global_idx]
         # )
-        print(f"Total 'Other' prediction by small model: {other_preds}")
+        # print(f"Total 'Other' prediction by small model: {other_preds}")
         # print(f"Total prediction outside the test set: {num_pred_outside_global}")
+        print(f"Small model call: {self.small_model_call}/{num_runs * sample_size}")
+        print(f"Big model call: {self.big_model_call}/{num_runs * sample_size}")
+
         print(f"Average time per image: {stats.fmean(time_per_image) * 1000:.2f} ms")
         print(f"Throughput: {1.0 / stats.fmean(time_per_image):.2f} fps")
         # total_support_list.append(num_pred_outside_global)
 
-        if save_path:
-            accuracy = accuracy_score(all_true, all_pred)
-            print(f"Accuracy: {accuracy:.4f}")
-            df = generate_report(
-                all_true,
-                all_pred,
-                self.global_species_names,
-                total_support_list,
-                float(accuracy),
-            )
-
-            os.makedirs(save_path, exist_ok=True)
-
-            with pd.option_context(
-                "display.max_rows", None, "display.max_columns", None
-            ):
-                model_name = "pipeline_mcunet_convnext_full"
-                df.to_csv(os.path.join(save_path, f"{model_name}.csv"))
+        # if save_path:
+        #     accuracy = accuracy_score(all_true, all_pred)
+        #     print(f"Accuracy: {accuracy:.4f}")
+        #     df = generate_report(
+        #         all_true,
+        #         all_pred,
+        #         self.global_species_names,
+        #         total_support_list,
+        #         float(accuracy),
+        #     )
+        #
+        #     os.makedirs(save_path, exist_ok=True)
+        #
+        #     with pd.option_context(
+        #         "display.max_rows", None, "display.max_columns", None
+        #     ):
+        #         model_name = "pipeline_mcunet_convnext_full"
+        #         df.to_csv(os.path.join(save_path, f"{model_name}.csv"))
 
 
 if __name__ == "__main__":
@@ -434,10 +447,24 @@ if __name__ == "__main__":
     args = arg_parser.parse_args()
 
     threshold = args.threshold
+    small_image_data = []
+    small_species_labels = []
+    small_model_paths = [
+        f"models/mcunet-in2_haute_garonne_0.5_{i}_best.onnx" for i in range(0, 22, 7)
+    ]
+    # small_image_data, _, _, small_species_labels, _ = manifest_generator_wrapper(
+    #     threshold
+    # )
+    num_of_dominant_classes = 7
+    data_creators = DatasetCreator(number_of_dominant_classes=num_of_dominant_classes)
 
-    small_image_data, _, _, small_species_labels, _ = manifest_generator_wrapper(
-        threshold
-    )
+    for i in range(0, 22, num_of_dominant_classes):
+        small_image_dats, _, _, _, small_species_label = data_creators.create_dataset(i)
+        print(f"small species label: {small_species_label}")
+
+        small_image_data.append(small_image_dats)
+        small_species_labels.append(small_species_label)
+
     global_image_data, _, _, global_species_labels, global_species_composition = (
         manifest_generator_wrapper(1.0)
     )
@@ -445,24 +472,25 @@ if __name__ == "__main__":
         big_species_labels = json.load(full_bird_insect_labels)
         big_species_labels = {int(k): v for k, v in big_species_labels.items()}
     # Create a list of small model paths
-
     small_model_paths = [
         f"models/mcunet-in2_haute_garonne_0.5_{i}_best.onnx" for i in range(0, 22, 7)
     ]
+
     big_model_path = "models/convnext_full_insect_best.onnx"
+    print(f"small_species_labels: {small_species_labels}")
+
     pipeline = NFullPipelineMonteCarloSimulation(
-        small_model_path=small_model_paths,
-        big_model_path=big_model_path,
-        number_of_small_models=len(small_model_paths),
-        global_data_manifests=global_image_data,
-        global_species_labels=global_species_labels,
-        global_total_support_list=global_species_composition,
-        small_model_species_labels=small_species_labels,
-        big_model_species_labels=big_species_labels,
+        small_model_paths,
+        big_model_path,
+        global_image_data,
+        global_species_labels,
+        global_species_composition,
+        small_species_labels,
+        big_species_labels,
+        is_big_inception_v3=False,
         small_model_input_size=args.small_model_input_size,
         big_model_input_size=args.big_model_input_size,
-        is_big_inception_v3=True if "inception" in big_model_path else False,
-        providers=args.providers,
+        # providers=["CUDAExecutionProvider", "CUDAExecutionProvider"],
     )
 
     pipeline.run(1, 1000, "./baseline_benchmark")

@@ -401,6 +401,7 @@ if __name__ == "__main__":
     small_image_data, _, _, small_species_labels, _ = manifest_generator_wrapper(
         threshold
     )
+    print(f"small species labels: {small_species_labels}")
     global_image_data, _, _, global_species_labels, global_species_composition = (
         manifest_generator_wrapper(1.0)
     )
