@@ -110,8 +110,16 @@ class NFullPipelineMonteCarloSimulation:
         self.big_species_name = list(self.big_species_labels.values())
         self.is_big_incv3 = is_big_inception_v3
         self.small_species_preds: Dict = {}
+
         self.global_species_preds: list = []
-        self.small_model_call: int = 0
+        self.small_model1_call: int = 0
+        self.small_model2_call: int = 0
+        self.small_model3_call: int = 0
+        self.small_model4_call: int = 0
+        self.sessions: list[InferenceSession] = [
+            ort.InferenceSession(model_path, providers=[self.providers[0]])
+            for model_path in self.small_model_path
+        ]
         self.big_model_call: int = 0
 
     def _get_small_model_other_label(self, small_species_lab) -> int:
@@ -208,7 +216,10 @@ class NFullPipelineMonteCarloSimulation:
         return [int(label) for label in sampled_species]
 
     def _infer_one(
-        self, model_type: ModelType, image_path: str, model_path: Optional[str] = None
+        self,
+        model_type: ModelType,
+        image_path: str,
+        small_session: Optional[InferenceSession] = None,
     ) -> Optional[Tuple[int, float]]:
         """
         Perform inference on a single image using the specified model type.
@@ -220,7 +231,7 @@ class NFullPipelineMonteCarloSimulation:
             or None if an error occurs during inference.
         """
         if model_type == ModelType.BIG_MODEL:
-            session: InferenceSession = self.big_session
+            session = self.big_session
             input_size = self.big_input_size
             input_name = self.big_input_name
             if self.is_big_incv3:
@@ -228,16 +239,16 @@ class NFullPipelineMonteCarloSimulation:
             else:
                 is_incv3 = False
         else:
-            session = ort.InferenceSession(model_path, providers=[self.providers[0]])  # type: ignore
+            session: InferenceSession = small_session  # type: ignore
             input_size = self.small_input_size
-            input_name = session.get_inputs()[0].name
+            input_name = session.get_inputs()[0].name  # type: ignore
             is_incv3 = False
 
         try:
             img = preprocess_eval_opencv(
                 image_path, *input_size, is_inception_v3=is_incv3
             )
-            outputs = session.run(None, {input_name: img})
+            outputs = session.run(None, {input_name: img})  # type: ignore
             probabilities = scipy.special.softmax(outputs[0], axis=1)
             top1_idx = int(np.argmax(probabilities[0]))
             top1_prob = float(probabilities[0][top1_idx])
@@ -261,36 +272,76 @@ class NFullPipelineMonteCarloSimulation:
             Optional[Tuple[int, int, bool]]: A tuple containing the predicted species label,
             the ground truth species label, and a boolean indicating if the small model was used.
         """
-        i = 0
-        for model_path, small_other_label in zip(
-            self.small_model_path, self.small_other_labels
-        ):
-            print(
-                f"Running small model {i + 1}/{self.number_of_small_models} for {image_path}"
-            )
+        # i = 0
+        # for model_path, small_other_label in zip(
+        #     self.sessions, self.small_other_labels
+        # ):
+        #     print(
+        #         f"Running small model {i + 1}/{self.number_of_small_models} for {image_path}"
+        #     )
+        #     small_result = self._infer_one(
+        #         ModelType.SMALL_MODEL, image_path, model_path
+        #     )
+        #     if small_result is None:
+        #         print(f"Small model returns no result for {image_path}")
+        #         return None
+        #     small_pred, _ = small_result
+        #     if small_pred != small_other_label:
+        #         # If the small model prediction is not 'Other', return the result
+        #         print("Predict complete, next image")
+        #         if i == 0:
+        #             self.small_model1_call += 1
+        #         elif i == 1:
+        #             self.small_model2_call += 1
+        #         elif i == 2:
+        #             self.small_model3_call += 1
+        #         elif i == 3:
+        #             self.small_model4_call += 1
+        #         else:
+        #             print(f"Warning: Unexpected small model index {i}")
+        #         return small_result[0], ground_truth, i
+        #     print(
+        #         f"model return Other, try next small model {i + 1}/{self.number_of_small_models}"
+        #     )
+        #     i += 1
+        # print(f"All small models returned 'Other', running big model for {image_path}")
+        # big_result = self._infer_one(ModelType.BIG_MODEL, image_path)
+        # if big_result is None:
+        #     print(f"Big model returns no result for {image_path}")
+        #     return None
+        # self.big_model_call += 1
+        # return big_result[0], ground_truth, i
+        small = 0
+        while small < self.number_of_small_models:
             small_result = self._infer_one(
-                ModelType.SMALL_MODEL, image_path, model_path
+                ModelType.SMALL_MODEL, image_path, self.sessions[small]
             )
             if small_result is None:
                 print(f"Small model returns no result for {image_path}")
                 return None
+            if small == 0:
+                self.small_model1_call += 1
+            elif small == 1:
+                self.small_model2_call += 1
+            elif small == 2:
+                self.small_model3_call += 1
+            elif small == 3:
+                self.small_model4_call += 1
             small_pred, _ = small_result
-            if small_pred != small_other_label:
-                # If the small model prediction is not 'Other', return the result
+            if small_pred == self.small_other_labels[small]:
+                print("try-next-small-model")
+                small += 1
+            else:
                 print("Predict complete, next image")
-                self.small_model_call += 1
-                return small_result[0], ground_truth, i
-            print(
-                f"model return Other, try next small model {i + 1}/{self.number_of_small_models}"
-            )
-            i += 1
+                return small_result[0], ground_truth, small
+
         print(f"All small models returned 'Other', running big model for {image_path}")
         big_result = self._infer_one(ModelType.BIG_MODEL, image_path)
         if big_result is None:
             print(f"Big model returns no result for {image_path}")
             return None
         self.big_model_call += 1
-        return big_result[0], ground_truth, i
+        return big_result[0], ground_truth, small
 
     def run(
         self,
@@ -360,7 +411,11 @@ class NFullPipelineMonteCarloSimulation:
         # )
         # print(f"Total 'Other' prediction by small model: {other_preds}")
         # print(f"Total prediction outside the test set: {num_pred_outside_global}")
-        print(f"Small model call: {self.small_model_call}/{num_runs * sample_size}")
+        print(f"Small model 1 call: {self.small_model1_call}/{num_runs * sample_size}")
+        print(f"Small model 2 call: {self.small_model2_call}/{num_runs * sample_size}")
+        print(f"Small model 3 call: {self.small_model3_call}/{num_runs * sample_size}")
+        print(f"Small model 4 call: {self.small_model4_call}/{num_runs * sample_size}")
+
         print(f"Big model call: {self.big_model_call}/{num_runs * sample_size}")
 
         print(f"Average time per image: {stats.fmean(time_per_image) * 1000:.2f} ms")
@@ -449,9 +504,9 @@ if __name__ == "__main__":
     threshold = args.threshold
     small_image_data = []
     small_species_labels = []
-    small_model_paths = [
-        f"models/mcunet-in2_haute_garonne_0.5_{i}_best.onnx" for i in range(0, 22, 7)
-    ]
+    # small_model_paths = [
+    #     f"models/mcunet-in2_haute_garonne_0.5_{i}_best.onnx" for i in range(0, 15, 7)
+    # ]
     # small_image_data, _, _, small_species_labels, _ = manifest_generator_wrapper(
     #     threshold
     # )

@@ -80,6 +80,8 @@ class FullPipelineMonteCarloSimulation:
         self.is_big_incv3 = is_big_inception_v3
         self.small_species_preds: list = []
         self.global_species_preds: list = []
+        self.small_model_call = 0
+        self.big_model_call = 0
 
     def _get_small_model_other_label(self) -> int:
         species_labels_flip: Dict[str, int] = dict(
@@ -185,13 +187,16 @@ class FullPipelineMonteCarloSimulation:
         if small_result is None:
             print(f"Small model returns no result for {image_path}")
             return None
+        self.small_model_call += 1
         small_pred, _ = small_result
+
         if small_pred == self.small_other_label:
             is_small = False
             big_result = self._infer_one(ModelType.BIG_MODEL, image_path)
             if big_result is None:
                 print(f"Big model returns no result for {image_path}")
                 return None
+            self.big_model_call += 1
             return big_result[0], ground_truth, is_small
         return small_result[0], ground_truth, is_small
         # if not self._is_prediction_belongs_to_global_dataset(big_result[0]):
@@ -304,7 +309,8 @@ class FullPipelineMonteCarloSimulation:
                 #     y_pred.append(pred)
             all_true.extend(y_true)
             all_pred.extend(y_pred)
-
+        print(f"Total small model calls: {self.small_model_call}")
+        print(f"Total big model calls: {self.big_model_call}")
         total_support_list = get_support_list(
             self.global_total_support_list, self.global_species_names
         )
@@ -410,7 +416,7 @@ if __name__ == "__main__":
         big_species_labels = {int(k): v for k, v in big_species_labels.items()}
 
     pipeline = FullPipelineMonteCarloSimulation(
-        "models/mcunet-in2-haute-garonne_8_best.onnx",
+        "models/mcunet-in2_haute_garonne_0.5_0_best.onnx",
         "models/convnext_full_insect_best.onnx",
         global_image_data,
         global_species_labels,
@@ -420,7 +426,7 @@ if __name__ == "__main__":
         is_big_inception_v3=False,
         small_model_input_size=args.small_model_input_size,
         big_model_input_size=args.big_model_input_size,
-        providers=["CUDAExecutionProvider", "CUDAExecutionProvider"],
+        # providers=["CUDAExecutionProvider", "CUDAExecutionProvider"],
     )
 
     pipeline.run(1, 1000, "./baseline_benchmark", model_type=args.model_type)
