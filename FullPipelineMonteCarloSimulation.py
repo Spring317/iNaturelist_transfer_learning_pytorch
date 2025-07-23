@@ -75,6 +75,7 @@ class FullPipelineMonteCarloSimulation:
 
         self.small_species_labels: Dict[int, str] = small_model_species_labels
         self.small_other_label = self._get_small_model_other_label()
+        print(f"Small model other label: {self.small_other_label}")
         self.big_species_labels: Dict[int, str] = big_model_species_labels
         self.big_species_name = list(self.big_species_labels.values())
         self.is_big_incv3 = is_big_inception_v3
