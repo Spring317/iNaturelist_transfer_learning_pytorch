@@ -124,10 +124,14 @@ Output:
 
 
 2. Inferencing steps:
- - Run this command the run the inference: 
+- Run this command the run the inference: 
 
 ```bash
 python FullPipelineMonteCarloSimulation.py --model both --input_size 160 --runs 10 --samples 500 --out_prefix myexp
+```
+- For piping multiple models (It's the combination of 8 models of total 49 classes for now, I will add flags later :( )
+```bash
+python python3 FullPipeLine_n_MCUNET_CONV.py     
 ```
 
 Feel free to change options with --help flags.
