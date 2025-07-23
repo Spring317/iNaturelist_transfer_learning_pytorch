@@ -394,6 +394,10 @@ class NFullPipelineMonteCarloSimulation:
                         global_pred = self._translate_prediction_to_global_label(
                             pred, ModelType.SMALL_MODEL, small_counter
                         )
+                        print(
+                            f"Prediction: {global_pred}, Ground Truth: {gt}, Small Model Counter: {small_counter}"
+                        )
+
                         y_true.append(gt)
                         y_pred.append(global_pred)
                     #
