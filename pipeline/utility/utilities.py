@@ -1,7 +1,8 @@
 import json
 import os
 from typing import Dict, List, Optional, Tuple, Union
-
+from PIL import Image
+from torchvision import transforms
 import cv2
 import numpy as np
 import pandas as pd
@@ -14,8 +15,8 @@ from sklearn.metrics import classification_report
 from torch.utils.data import DataLoader
 from torchvision import models
 from tqdm import tqdm
-
 from pipeline.dataset_loader import CustomDataset
+from pipeline.preprocessing import CentralCropResize
 
 
 def get_device(use_cpu=False) -> torch.device:
@@ -23,12 +24,12 @@ def get_device(use_cpu=False) -> torch.device:
     Determines the computation device (CPU or GPU) to be used for training or inference.
 
     Args:
-        use_cpu (bool, optional): 
-            If True, forces the use of CPU even if a CUDA-compatible GPU is available. 
+        use_cpu (bool, optional):
+            If True, forces the use of CPU even if a CUDA-compatible GPU is available.
             Defaults to False.
 
     Returns:
-        torch.device: 
+        torch.device:
             A torch.device object representing either "cpu" or "cuda".
     """
     if use_cpu:
@@ -57,20 +58,20 @@ def mobile_net_v3_large_builder(
         - Build a new MobileNetV3-Large model from scratch (optionally using ImageNet weights), and modify its final classification layer to match the desired number of outputs.
 
     Args:
-        device (torch.device): 
+        device (torch.device):
             The device (CPU or GPU) on which the model will be loaded or created.
-        num_outputs (Optional[int], optional): 
-            Number of output classes for the final classification layer. 
+        num_outputs (Optional[int], optional):
+            Number of output classes for the final classification layer.
             Required if building a new model. Ignored if loading from a checkpoint.
-        start_with_weight (bool, optional): 
+        start_with_weight (bool, optional):
             If True, initializes the model with default ImageNet pre-trained weights.
             Defaults to False (random initialization).
-        path (Optional[str], optional): 
-            Path to a `.pth` file containing a serialized full model to load. 
+        path (Optional[str], optional):
+            Path to a `.pth` file containing a serialized full model to load.
             If provided, `num_outputs` is ignored.
 
     Returns:
-        torch.nn.Module: 
+        torch.nn.Module:
             A MobileNetV3-Large model instance moved to the specified device.
 
     Notes:
@@ -117,22 +118,22 @@ def convnext_large_builder(
         - Build a new ConvNeXt-Large model from scratch (optionally using ImageNet weights), and modify its final classification layer to match the desired number of outputs.
 
     Args:
-        device (torch.device): 
+        device (torch.device):
             The device (CPU or GPU) on which the model will be loaded or created.
-        num_outputs (Optional[int], optional): 
-            Number of output classes for the final classification layer. 
+        num_outputs (Optional[int], optional):
+            Number of output classes for the final classification layer.
             Required if building a new model. Ignored if loading from a checkpoint.
-        start_with_weight (bool, optional): 
+        start_with_weight (bool, optional):
             If True, initializes the model with default ImageNet pre-trained weights.
             Defaults to False (random initialization).
-        path (Optional[str], optional): 
-            Path to a `.pth` file containing a serialized full model to load. 
+        path (Optional[str], optional):
+            Path to a `.pth` file containing a serialized full model to load.
             If provided, `num_outputs` is ignored.
         input_size (int, optional):
             Input image size (assumes square images). Defaults to 160.
 
     Returns:
-        torch.nn.Module: 
+        torch.nn.Module:
             A ConvNeXt-Large model instance moved to the specified device.
 
     Notes:
@@ -142,34 +143,76 @@ def convnext_large_builder(
         - For input sizes other than 224, the model adapts automatically through adaptive pooling.
     """
 
-    if path and not num_outputs:
-        # load full model
-        model = torch.load(path, map_location=device, weights_only=False)
-        model = model.to(device)
+    if path:
+        try:
+            # Try to load the checkpoint
+            checkpoint = torch.load(path, map_location=device, weights_only=False)
+
+            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+                # Checkpoint contains state_dict and metadata (from torch.save with dict)
+                model = models.convnext_large(weights=None)
+                num_classes = checkpoint["model_state_dict"][
+                    "classifier.2.weight"
+                ].shape[0]
+                model.classifier[2] = nn.Linear(
+                    model.classifier[2].in_features, num_classes
+                )
+                model.load_state_dict(checkpoint["model_state_dict"])
+                model = model.to(device)
+                print(f"Loaded model with {num_classes} output classes from checkpoint")
+
+            elif isinstance(checkpoint, dict) and "classifier.2.weight" in checkpoint:
+                # Checkpoint is a state_dict directly (from model.state_dict())
+                model = models.convnext_large(weights=None)
+                num_classes = checkpoint["classifier.2.weight"].shape[0]
+                model.classifier[2] = nn.Linear(
+                    model.classifier[2].in_features, num_classes
+                )
+                model.load_state_dict(checkpoint)
+                model = model.to(device)
+                print(f"Loaded model with {num_classes} output classes from state_dict")
+
+            else:
+                # Checkpoint is a full model (from torch.save(model, path))
+                model = checkpoint.to(device)
+                print("Loaded full model from checkpoint")
+
+        except Exception as e:
+            print(f"Error loading checkpoint: {e}")
+            print("The checkpoint file might be corrupted or in an unexpected format.")
+
+            # Don't create a new model - this would give wrong results!
+            # Instead, raise an error to alert the user
+            raise RuntimeError(
+                f"Failed to load checkpoint from '{path}'. "
+                f"Please check if the file exists and is a valid PyTorch checkpoint. "
+                f"Creating a new untrained model would give incorrect results."
+            ) from e
 
     else:
+        # Build new model
         if start_with_weight:
             model = models.convnext_large(
                 weights=models.convnext.ConvNeXt_Large_Weights.IMAGENET1K_V1
             )
         else:
-            # Fixed: Use convnext_large instead of mobilenet_v3_large
             model = models.convnext_large(weights=None)
-        
+
         old_linear_layer = model.classifier[2]
         assert isinstance(old_linear_layer, nn.Linear), "Expected a Linear layer"
         assert isinstance(num_outputs, int), (
             "Expected an int for classification layer output"
         )
         model.classifier[2] = nn.Linear(old_linear_layer.in_features, num_outputs)
-        
-        # If input size is not 224, add adaptive pooling before classifier
+
+        # Handle 160x160 input size
         if input_size != 224:
             # ConvNeXt uses adaptive average pooling, so it should handle different input sizes
             # The model will automatically adapt to the input size through its adaptive pooling layer
             pass
-        
+
         model = model.to(device)
+        print(f"Model configured for {input_size}x{input_size} input size")
 
     return model
 
@@ -187,24 +230,24 @@ def dataloader_wrapper(
     Creates training and validation DataLoaders from the given datasets with common configuration options.
 
     Args:
-        train_dataset (CustomDataset): 
+        train_dataset (CustomDataset):
             The dataset used for training.
-        val_dataset (CustomDataset): 
+        val_dataset (CustomDataset):
             The dataset used for validation.
-        batch_size (int): 
+        batch_size (int):
             Number of samples per batch to load.
-        num_workers (int): 
+        num_workers (int):
             Number of subprocesses to use for data loading.
-        shuffle (bool, optional): 
+        shuffle (bool, optional):
             Whether to shuffle the dataset at every epoch. Defaults to True.
-        pin_memory (bool, optional): 
+        pin_memory (bool, optional):
             If True, the data loader will copy tensors into CUDA pinned memory before returning them. Defaults to True.
-        persistent_workers (bool, optional): 
-            Whether to keep data loading workers alive between epochs. 
+        persistent_workers (bool, optional):
+            Whether to keep data loading workers alive between epochs.
             Improves efficiency when `num_workers > 0`. Defaults to True.
 
     Returns:
-        Tuple[DataLoader, DataLoader]: 
+        Tuple[DataLoader, DataLoader]:
             A tuple containing:
                 - train_loader: DataLoader for the training set.
                 - val_loader: DataLoader for the validation set.
@@ -270,22 +313,24 @@ def train_one_epoch_amp(
     return avg_loss, accuracy
 
 
-def get_support_list(species_composition: Union[str, Dict[str, int]], species_name: List[str]) -> List[int]:
+def get_support_list(
+    species_composition: Union[str, Dict[str, int]], species_name: List[str]
+) -> List[int]:
     """
     Retrieves a list of sample counts (support values) for each species name in a specified order.
 
     This function takes either a path to a JSON file or a dictionary containing species name-to-count mappings, and returns a list of support values aligned with the given list of species names.
 
     Args:
-        species_composition (Union[str, Dict[str, int]]): 
+        species_composition (Union[str, Dict[str, int]]):
             Either a path to a JSON file or a dictionary mapping species names (str) to image counts (int).
-        species_name (List[str]): 
-            List of species names for which support values should be extracted. 
+        species_name (List[str]):
+            List of species names for which support values should be extracted.
             The order of this list defines the order of the returned support values.
 
     Returns:
-        List[int]: 
-            A list of support counts (image counts) corresponding to the input `species_name` list. 
+        List[int]:
+            A list of support counts (image counts) corresponding to the input `species_name` list.
             If a species name is not found in the composition, 0 is returned for that species.
     """
     if isinstance(species_composition, str):
@@ -303,27 +348,29 @@ def generate_report(
     species_names: List[str],
     total_support_list: List[int],
     accuracy: float,
+    labels: Optional[List[int]] = None,  # <-- add this
 ) -> pd.DataFrame:
     """
-    Generates a detailed classification report as a pandas DataFrame, including per-class metrics 
+    Generates a detailed classification report as a pandas DataFrame, including per-class metrics
     and additional support statistics for validation and training data.
 
     Args:
-        all_labels (List[int]): 
+        all_labels (List[int]):
             Ground-truth class labels for all validation samples.
-        all_preds (List[int]): 
+        all_preds (List[int]):
             Predicted class labels for all validation samples.
-        species_names (List[str]): 
+        species_names (List[str]):
             Ordered list of species names corresponding to class indices.
-        total_support_list (List[int]): 
+        total_support_list (List[int]):
             Total number of available samples per species (i.e., train + val).
-        accuracy (float): 
+        accuracy (float):
             Overall classification accuracy to include in the report.
     """
     report_dict = classification_report(
         all_labels,
         all_preds,
         target_names=species_names,
+        labels=labels,  # <-- add this
         output_dict=True,
         zero_division=0,
     )
@@ -355,7 +402,7 @@ def generate_report(
         "f1-score": 0,
         "support": np.nan,
         "train_support": np.nan,
-        "total_support": np.nan
+        "total_support": np.nan,
     }
 
     # clean up summary support rows
@@ -367,20 +414,25 @@ def generate_report(
 
 
 def manifest_generator_wrapper(
-    dominant_threshold: Optional[float] = None, 
-    export: bool = False
-    ) -> Tuple[List[Tuple[str, int]], List[Tuple[str, int]], List[Tuple[str, int]], Dict[int, str], Dict[str, int]]:
+    dominant_threshold: Optional[float] = None, export: bool = False
+) -> Tuple[
+    List[Tuple[str, int]],
+    List[Tuple[str, int]],
+    List[Tuple[str, int]],
+    Dict[int, str],
+    Dict[str, int],
+]:
     """
     Wrapper function that loads configuration and calls `run_manifest_generator()` to generate train/val manifests and species composition based on a dominant class threshold.
 
     This function parses configuration from a YAML file (`./config.yaml`), applies optional overrides, validates the config, and calls the underlying manifest generation logic.
 
     Args:
-        dominant_threshold (Optional[float], optional): 
+        dominant_threshold (Optional[float], optional):
             Overrides the dominant species threshold from the config file if provided.
             If `None`, the threshold from `config["train_val_split"]["dominant_threshold"]` is used.
-        export (bool, optional): 
-            Whether to export the full manifest, train/val splits, and composition JSONs. 
+        export (bool, optional):
+            Whether to export the full manifest, train/val splits, and composition JSONs.
             Defaults to False.
 
     Returns:
@@ -427,32 +479,32 @@ def manifest_generator_wrapper(
         randomness,
         target_classes,
         dominant_threshold,
-        export=export
+        export=export,
     )
 
 
 def calculate_weight_cross_entropy(
-    species_composition: Union[str, Dict[str, int]], 
-    species_labels: Union[str, Dict[int, str]]
-    ):
+    species_composition: Union[str, Dict[str, int]],
+    species_labels: Union[str, Dict[int, str]],
+):
     """
     Computes class weights for imbalanced classification using inverse frequency, suitable for use with `torch.nn.CrossEntropyLoss(weight=...)`.
 
     Accepts either file paths or preloaded dictionaries for species composition and label mapping.
 
     Args:
-        species_composition (Union[str, Dict[str, int]]): 
+        species_composition (Union[str, Dict[str, int]]):
             Either a path to a JSON file or a dictionary mapping species names to image counts.
-        species_labels (Union[str, Dict[Union[int, str], str]]): 
+        species_labels (Union[str, Dict[Union[int, str], str]]):
             Either a path to a JSON file or a dictionary mapping class labels to species names.
 
     Returns:
-        torch.Tensor: 
+        torch.Tensor:
             A 1D tensor of weights (float32), one per class, ordered by class index.
             The weights are scaled so that their average equals 1.0.
 
     Notes:
-        - Weights are computed using:  
+        - Weights are computed using:
             `weight_i = (1 / count_i) / sum_j (1 / count_j) * num_classes`
         - This weighting compensates for class imbalance by amplifying loss contribution from rare classes.
         - Class order is determined by `species_labels_path` (i.e., label ID → name).
@@ -470,7 +522,7 @@ def calculate_weight_cross_entropy(
     else:
         labels_data = species_labels
 
-    species_names  = list(labels_data.values())
+    species_names = list(labels_data.values())
 
     species_counts = []
 
@@ -483,7 +535,9 @@ def calculate_weight_cross_entropy(
     return weights
 
 
-def preprocess_eval_opencv(image_path, width, height, central_fraction=0.857, is_inception_v3: bool = False):
+def preprocess_eval_opencv(
+    image_path, width, height, central_fraction=0.857, is_inception_v3: bool = False
+):
     """
     Loads and preprocesses an image using OpenCV for inference with ONNX models.
 
@@ -491,52 +545,68 @@ def preprocess_eval_opencv(image_path, width, height, central_fraction=0.857, is
     to a CHW format suitable for ONNX inference.
 
     Args:
-        image_path (str): 
+        image_path (str):
             Path to the image file to preprocess.
-        width (int): 
+        width (int):
             Target width after resizing.
-        height (int): 
+        height (int):
             Target height after resizing.
-        central_fraction (float, optional): 
+        central_fraction (float, optional):
             Fraction of the central region to retain before resizing. Defaults to 0.857.
-        is_inception_v3 (bool, optional): 
+        is_inception_v3 (bool, optional):
             If True, applies additional transposition to match InceptionV3's input format (HWC → CHW with batch first).
             Defaults to False.
 
     Returns:
-        np.ndarray: 
+        np.ndarray:
             A preprocessed image tensor of shape (1, 3, height, width) in float32 format, normalized to [-1, 1].
 
     Raises:
-        ValueError: 
+        ValueError:
             If the image cannot be read from the specified path.
 
     Notes:
         - Output is formatted as NCHW (batch size 1), suitable for ONNX runtime.
         - If `is_inception_v3=True`, an additional transpose is performed to produce (3, 1, H, W).
     """
-    img = cv2.imread(image_path)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = Image.open(image_path).convert("RGB")
     if img is None:
         raise ValueError("Failed to read image")
-    h, w, _ = img.shape
 
-    crop_h = int(h * central_fraction)
-    crop_w = int(w * central_fraction)
+    img_size = (160, 160)
 
-    offset_h = (h - crop_h) // 2
-    offset_w = (w - crop_w) // 2
-    img = img[offset_h: offset_h + crop_h, offset_w: offset_w + crop_w]
+    transform = transforms.Compose(
+        [
+            CentralCropResize(central_fraction=0.875, size=img_size),
+            # transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ]
+    )
 
-    img = cv2.resize(img, (width, height), interpolation=cv2.INTER_LINEAR)
-
-    img = img.astype(np.float32) / 255.0
-    img = (img - 0.5) * 2.0
-
-    if is_inception_v3:
-        img = np.expand_dims(img, axis=0)
-    else:
-        img = np.expand_dims(img, axis=0)
-        img = np.transpose(img, (0, 3, 1, 2))
-
+    img = transform(img)
+    # convert image into numpy array
+    img = np.array(img, dtype=np.float32)
+    # expand batch dimension
+    img = np.expand_dims(img, axis=0)
     return img
+
+    # h, w, _ = img.shape if isinstance(img, np.ndarray) else img.size
+    #
+    # crop_h = int(h * central_fraction)
+    # crop_w = int(w * central_fraction)
+    #
+    # offset_h = (h - crop_h) // 2
+    # offset_w = (w - crop_w) // 2
+    # img = img[offset_h : offset_h + crop_h, offset_w : offset_w + crop_w]
+    #
+    # img = cv2.resize(img, (width, height), interpolation=cv2.INTER_LINEAR)
+    #
+    # img = img.astype(np.float32) / 255.0
+    # img = (img - 0.5) * 2.0
+    #
+    # if is_inception_v3:
+    #     img = np.expand_dims(img, axis=0)
+    # else:
+    #     img = np.expand_dims(img, axis=0)
+    #     img = np.transpose(img, (0, 3, 1, 2))
+
+    # return img

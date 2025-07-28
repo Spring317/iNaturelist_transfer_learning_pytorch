@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, get_worker_info
 from torchvision import transforms
 from pipeline.preprocessing import ColorDistorter, CentralCropResize
 from dataset_builder.core.utility import load_manifest_parquet
+import json
 
 
 class CustomDataset(Dataset):
@@ -34,7 +35,8 @@ class CustomDataset(Dataset):
         self,
         data: Union[str, List[Tuple[str, int]]],
         train: bool = True,
-        img_size: Tuple[int, int] = (224, 224),
+        dominant_threshold: float = 0.5,
+        img_size: Tuple[int, int] = (160, 160),
     ):
         if isinstance(data, str):
             self.image_label_with_correct_labels = load_manifest_parquet(data)
@@ -42,6 +44,7 @@ class CustomDataset(Dataset):
             self.image_label_with_correct_labels = data
         self.train = train
         self.img_size = img_size
+        self.dominant_threshold = dominant_threshold
 
     def __len__(self) -> int:
         return len(self.image_label_with_correct_labels)
@@ -49,6 +52,21 @@ class CustomDataset(Dataset):
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
         img_path, label = self.image_label_with_correct_labels[index]
         image = Image.open(img_path).convert("RGB")
+
+        str_labels = {}
+        with open(
+            "/home/quydx/iNaturelist_transfer_learning_pytorch/haute_garonne/dataset_species_labels.json"
+        ) as f:
+            dataset_species = json.load(f)
+        for lab, species in dataset_species.items():
+            str_labels[lab] = species
+
+        # Dumb str_labels into a json file
+        with open(
+            f"/home/quydx/iNaturelist_transfer_learning_pytorch/haute_garonne/dataset_species_labels_{self.dominant_threshold}.json",
+            "w",
+        ) as f:
+            json.dump(str_labels, f)
 
         worker_info = get_worker_info()
         worker_id = worker_info.id if worker_info else 0
@@ -63,14 +81,14 @@ class CustomDataset(Dataset):
                     transforms.RandomHorizontalFlip(),
                     ColorDistorter(ordering=color_ordering),
                     transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+                    # transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
                 ]
             )
         else:
             transform = transforms.Compose(
                 [
                     CentralCropResize(central_fraction=0.875, size=self.img_size),
-                    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+                    # transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
                 ]
             )
 

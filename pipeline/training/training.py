@@ -28,24 +28,24 @@ def train_one_epoch(
     """
     Trains the given model for one epoch on the provided DataLoader.
 
-    This function performs standard supervised learning with forward pass, 
+    This function performs standard supervised learning with forward pass,
     loss computation, backpropagation, and optimizer updates. It also includes
     a label sanity check to ensure labels fall within valid class index range.
 
     Args:
-        model (torch.nn.Module): 
+        model (torch.nn.Module):
             The model to be trained.
-        dataloader (DataLoader[CustomDataset]): 
+        dataloader (DataLoader[CustomDataset]):
             A DataLoader that yields batches of (image, label) pairs.
-        criterion: 
+        criterion:
             A loss function (e.g., nn.CrossEntropyLoss).
-        optimizer: 
+        optimizer:
             A PyTorch optimizer (e.g., torch.optim.Adam or SGD).
-        device (torch.device): 
+        device (torch.device):
             The device on which to perform computation (CPU or GPU).
 
     Returns:
-        Tuple[float, float]: 
+        Tuple[float, float]:
             A tuple containing:
                 - The average training loss over the entire dataset.
                 - The training accuracy over the entire dataset.
@@ -60,7 +60,7 @@ def train_one_epoch(
     checked_labels = False
     for images, labels in loop:
         images, labels = images.to(device), labels.to(device)
-
+        print(f"Images shape: {images.shape}, Labels shape: {labels.shape}")
         # tensor guard
         if not checked_labels:
             num_classes = model(images).shape[1]
@@ -152,21 +152,21 @@ def train_validate(
     This function is used during a warm-up phase of sparse training, where a regularizer (e.g., L1/L2 penalty on weights or activations) is applied to encourage sparsity before actual pruning is performed.
 
     Args:
-        model (torch.nn.Module): 
+        model (torch.nn.Module):
             The model to be trained.
-        dataloader (DataLoader[CustomDataset]): 
+        dataloader (DataLoader[CustomDataset]):
             A DataLoader that yields batches of (image, label) pairs.
-        criterion: 
+        criterion:
             The loss function used to train the model (e.g., CrossEntropyLoss).
-        pruner: 
+        pruner:
             A sparsity regularizer object that provides:
                 - `update_regularizer()`: Called once before training.
                 - `regularize(model)`: Called on each backward pass to apply regularization.
-        device (torch.device): 
+        device (torch.device):
             The device on which to perform training (CPU or GPU).
 
     Returns:
-        Tuple[float, float]: 
+        Tuple[float, float]:
             A tuple containing:
                 - Average loss over the epoch.
                 - Accuracy over the entire dataset.
@@ -210,15 +210,15 @@ def save_model(
         - ONNX format (.onnx) using `torch.onnx.export()`, with support for dynamic batch sizes
 
     Args:
-        model (torch.nn.Module): 
+        model (torch.nn.Module):
             The trained PyTorch model to be saved.
-        name (str): 
+        name (str):
             Base name for the output files (e.g., 'mobilenetv3').
-        save_path (str): 
+        save_path (str):
             Directory where the model files will be saved. Will be created if it doesn't exist.
-        device (torch.device): 
+        device (torch.device):
             Device on which to create the dummy input tensor for ONNX export.
-        img_size (Tuple[int, int]): 
+        img_size (Tuple[int, int]):
             Expected input image size as (height, width) for dummy input.
 
     Output Files:
@@ -259,13 +259,13 @@ def validation_onnx(onnx_path: str, device: str = "cpu"):
     It also generates a per-class evaluation report as a pandas DataFrame.
 
     Args:
-        onnx_path (str): 
+        onnx_path (str):
             Path to the ONNX model file.
-        device (str, optional): 
+        device (str, optional):
             Device to use for inference ("cpu" or "cuda").
 
     Returns:
-        pd.DataFrame: 
+        pd.DataFrame:
             A classification report containing metrics such as precision, recall, and F1-score
             for each species class.
 
@@ -275,7 +275,9 @@ def validation_onnx(onnx_path: str, device: str = "cpu"):
     """
     model_name = os.path.basename(onnx_path)
     dom = model_name.replace(".onnx", "").split("_")[1]
-    _, train_images, val_images, species_dict, species_composition = manifest_generator_wrapper(1.0)
+    _, train_images, val_images, species_dict, species_composition = (
+        manifest_generator_wrapper(1.0)
+    )
     val_dataset = CustomDataset(val_images, train=False, img_size=(224, 224))
     val_loader = DataLoader(
         val_dataset,
@@ -324,3 +326,4 @@ def validation_onnx(onnx_path: str, device: str = "cpu"):
         all_labels, all_preds, species_names, total_support_list, float(accuracy)
     )
     return report_df
+
