@@ -1,0 +1,9 @@
+class_name,mean_confidence,min_confidence,max_confidence,std_confidence
+Apis mellifera,0.9056683,0.3427538,1.0,0.14311366
+Vanessa atalanta,0.94270074,0.2379658,1.0,0.13270205
+Harmonia axyridis,0.95364857,0.4554279,1.0,0.11169826
+Pieris rapae,0.9568754,0.48010847,1.0,0.097535156
+Coccinella septempunctata,0.9564367,0.47840622,1.0,0.1042054
+Vanessa cardui,0.93824923,0.34352088,1.0,0.13191046
+Nymphalis antiopa,0.92349994,0.45179847,1.0,0.13604939
+Other,0.9632886,0.33431122,1.0,0.099651515

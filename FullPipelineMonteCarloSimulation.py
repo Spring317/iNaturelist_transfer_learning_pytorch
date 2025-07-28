@@ -148,7 +148,7 @@ class FullPipelineMonteCarloSimulation:
             k=remaining_k,
         )
         random.shuffle(sampled_species)
-        return [int(label) for label in sampled_species]
+        return [20 for label in sampled_species]
 
     def _infer_one(
         self, model_type: ModelType, image_path: str
@@ -417,7 +417,7 @@ if __name__ == "__main__":
         big_species_labels = {int(k): v for k, v in big_species_labels.items()}
 
     pipeline = FullPipelineMonteCarloSimulation(
-        "models/mcunet-in2_haute_garonne_0.5_0_best.onnx",
+        "models/mcunet-in2_haute_garonne_0.5_7_best.onnx",
         "models/convnext_full_insect_best.onnx",
         global_image_data,
         global_species_labels,
