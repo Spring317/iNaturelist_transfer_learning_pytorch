@@ -169,3 +169,34 @@ All pipeline core functions has been implemented in `pipeline/`
 - Model Compression: Achieved via structured pruning with retraining for accuracy recovery.
 - Robust Evaluation: Monte Carlo simulations simulate field deployment by testing varying species distributions.
 - Interpretability: Feature map memory footpring and sparsity metrics are visualized layer-by-layer.
+
+## Citation
+Special thanks to mit-han-lab for creating the robust mcunet model:
+```@article{lin2020mcunet,
+  title={Mcunet: Tiny deep learning on iot devices},
+  author={Lin, Ji and Chen, Wei-Ming and Lin, Yujun and Gan, Chuang and Han, Song},
+  journal={Advances in Neural Information Processing Systems},
+  volume={33},
+  year={2020}
+}
+
+@inproceedings{
+  lin2021mcunetv2,
+  title={MCUNetV2: Memory-Efficient Patch-based Inference for Tiny Deep Learning},
+  author={Lin, Ji and Chen, Wei-Ming and Cai, Han and Gan, Chuang and Han, Song},
+  booktitle={Annual Conference on Neural Information Processing Systems (NeurIPS)},
+  year={2021}
+} 
+
+@article{
+  lin2022ondevice, 
+  title = {On-Device Training Under 256KB Memory},
+  author = {Lin, Ji and Zhu, Ligeng and Chen, Wei-Ming and Wang, Wei-Chen and Gan, Chuang and Han, Song}, 
+  journal = {arXiv:2206.15472 [cs]},
+  url = {https://arxiv.org/abs/2206.15472},
+  year = {2022}
+}
+```
+```
+```
+```
