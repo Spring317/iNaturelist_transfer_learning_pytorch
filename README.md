@@ -171,7 +171,7 @@ All pipeline core functions has been implemented in `pipeline/`
 - Interpretability: Feature map memory footpring and sparsity metrics are visualized layer-by-layer.
 
 ## Citation
-Special thanks to mit-han-lab for creating the robust mcunet model:
+Special thanks to [mit-han-lab](https://github.com/mit-han-lab) for creating the robust mcunet model:
 ```@article{lin2020mcunet,
   title={Mcunet: Tiny deep learning on iot devices},
   author={Lin, Ji and Chen, Wei-Ming and Lin, Yujun and Gan, Chuang and Han, Song},
