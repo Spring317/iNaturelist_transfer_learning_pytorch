@@ -196,7 +196,4 @@ Special thanks to mit-han-lab for creating the robust mcunet model:
   url = {https://arxiv.org/abs/2206.15472},
   year = {2022}
 }
-```
-```
-```
-```
+
