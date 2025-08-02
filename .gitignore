@@ -1,5 +1,6 @@
 data/
-models/
+models/*.onnx 
+models/*.pth
 .vscode/
 .python-version
 .venv/
