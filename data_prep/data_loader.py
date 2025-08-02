@@ -37,19 +37,24 @@ class DataLoaderCreator:
             val_loader: DataLoader for validation datat.
         """
         _, _, _, species_labels, _ = manifest_generator_wrapper(
-            self.dominant_threshold, export=True
+            self.dominant_threshold, export=False
         )
 
         num_classes = len(species_labels.keys())
 
         print(f"Number of species from manifest: {num_classes}")
-        datacreator = DatasetCreator(number_of_dominant_classes=num_classes)
+        datacreator = DatasetCreator(number_of_dominant_classes=num_classes - 1)
 
         # The actual number of classes in the dataset is NUM_SPECIES + 1 (including "Other" class)
 
         print(f"Species labels: {species_labels.keys()}")
 
         _, train, val, weights, label_map = datacreator.create_dataset(self.start_rank)
+        label_counts = {}
+        for d in val:
+            label = d["label"]
+            label_counts[label] = label_counts.get(label, 0) + 1
+        print(label_counts)
         train_dataset = CustomDataset(train, train=True, img_size=(160, 160))
         val_dataset = CustomDataset(val, train=False, img_size=(160, 160))
 

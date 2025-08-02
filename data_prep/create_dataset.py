@@ -58,6 +58,7 @@ class DatasetCreator:
         # dataset = self.create_dataset()
 
         # Shuffle dataset
+        random.seed(42)
         random.shuffle(dataset)
 
         split_index = int(len(dataset) * train_ratio)
