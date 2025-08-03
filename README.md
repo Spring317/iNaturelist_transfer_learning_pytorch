@@ -147,37 +147,8 @@ python python3 FullPipeLine_n_MCUNET_CONV.py
 ## Project Structure
 
 All pipeline core functions has been implemented in `pipeline/`
-
-### Training Pipeline
-- `train_single.py`: Train a baseline MobileNetV3 model (with optional experimental hyperparameter tuning).
-- `train_multiple.py`: Retrains pruned models (from `models/`) with different dominant thresholds
-
-### Pruning Pipeline
-- `prune.py`: Applies structure **global** (with isomorphic) and **layer by layer** (with isomorphic) pruning using `torch-pruning` ([link](https://github.com/VainF/Torch-Pruning))
-- `experiment_prune.py`: Demonstrates layer-specific pruning with `pruning_ratio_dict`.
-- We uses Magnitude Pruning (L1 norm).
-
-### Feature Map Analysis
-- `feature_maps_extractor.py`: Extracts shape + memory shape of feature maps.
-- `feature_maps_analysis.py`: Heatmap visualization across pruning levels and dominance thresholds.
-
-### MACs + Parameter Profiling
-- `mac_cal.py`: Uses `thop.profile()` to calculate MACs and parameters of pruned models.
-
-### Monte Carlo Simulation
-- `MonteCarloBenchmark.py`: Baseline test that groups non-dominant species into an "Other" class for practical deployment settings.
-  - Repeatedly samples species and evaluates ONNX models.
-  - Evaluates communication rate, false positive rate (FPR), confusion matrix.
-  - Evaluates robustness across random compositions and species coverage.
-
-### Post-hoc Evaluation
-- `post_hoc_approach.py`: Proof-of-concept that groups non-dominant species into an "Other" class for practical deployment settings.
-
-## Key Design Choices
-- Dominant Species Filtering: Allows dynamic focus on high-frequency species.
-- Model Compression: Achieved via structured pruning with retraining for accuracy recovery.
-- Robust Evaluation: Monte Carlo simulations simulate field deployment by testing varying species distributions.
-- Interpretability: Feature map memory footpring and sparsity metrics are visualized layer-by-layer.
+### Inferencing: Piping Strategy
+- `FullPipeLine_n_MCUNET_CONV.py`: Main script for running the inference pipeline with the cache model.
 
 ## Citation
 Special thanks to [mit-han-lab](https://github.com/mit-han-lab) for creating the robust mcunet model:
