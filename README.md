@@ -82,28 +82,28 @@ python3 dataset_orchestrator.py
 ### Configuration file: [config.yaml](config.yaml)
 This file can be created automatically through the `create_interactive_config.py`.
 
-Normally, you don't want to touch anything in here if you want to recreate what I did. But in case you do want to conduct your test on your own, these are some modifications you should     make:
+Normally, you don't want to touch anything in here if you want to recreate what I did. But in case you do want to conduct your test on your own, these are some modifications you should make:
 ```yaml
 global:
-  included_classes: ["Aves", "Insecta"]  # Species class to analyze
-  verbose: false  # Print extra debugging info
-  overwrite: false  # Overwrite existing file
+  included_classes: ["Insecta"]
+  verbose: false
+  overwrite: true
 
 paths:
-  src_dataset: "./data/inat2017"  # Source dataset
-  dst_dataset: "./data/haute_garonne"  # Target dataset
-  web_crawl_output_json: "./output/haute_garonne.json"  # Path to save crawl result 
-  output_dir: "./output"  # Path to save all JSON files
+  src_dataset: "./haute_garonne"
+  dst_dataset: "./haute_garonne"
+  web_crawl_output_json: "./output/haute_garonne.json"
+  output_dir: "./output"
 
 web_crawl:
   total_pages: 104
   base_url: "https://www.inaturalist.org/check_lists/32961-Haute-Garonne-Check-List?page="
-  delay_between_requests: 1
+  delay_between_requests: 1.0
 
 train_val_split:
   train_size: 0.8
   random_state: 42
-  dominant_threshold: 0.5
+  dominant_threshold: 1.0 
 ```
 
 Output:
@@ -117,24 +117,33 @@ Output:
 1. As an effort of optimizing the model in both accuracy and efficiency, we introduce the model piping strategy:
 
 * **Piping**: Combining several small models in front of the main model to filter out non-dominant species, reducing the computational load on the main model:
-  - **Cache model**: A lightweight model (**mcunet**) that classifies dominant species. These models (1 for now), filter out the species with higher representations in the dataset else returning "Others".
-  - The "Others" class is then mapped to teh full dataset and being processed by the main model to return the final classification.
+
+  - **Cache model**: A lightweight model (**mcunet**) that classifies dominant species. For training protocol, please refer to [this repo](https://github.com/Spring317/tinyml-trainer). These models, filter out the species with higher representations in the dataset else returning "Others".
+  
+  - **The "Others" class** is then mapped to the full dataset and being processed by the main model to return the final classification.
+  
   - **Main Model**: A more complex model that trained with the whole dataset, taking in charge of predicting every classes.
+  
   - Why we are not excluding the classes that are predicted by the cache model? Because everyone deserve a second chance :D. If the cache model predict one dominant class as others, the main model will correct it, increase the accuracy.
 
 
 2. Inferencing steps:
+- Modify the [FullPipeLine_n_MCUNET_CONV.py](FullPipeLine_n_MCUNET_CONV.py) as follow:
+```python
+    num_of_dominant_classes = 2 # Number of dominant classes
+    data_creators = DatasetCreator(number_of_dominant_classes=num_of_dominant_classes)
+    n = 21 # Total number of models
+    label_counts = {}
+    counter = 0
+    dominant_threshold = 0.2 # Dominant threshold for the cache model
+```
+
 - Run this command the run the inference: 
 
-```bash
-python FullPipelineMonteCarloSimulation.py --model both --input_size 160 --runs 10 --samples 500 --out_prefix myexp
-```
-- For piping multiple models (It's the combination of 8 models of total 49 classes for now, I will add flags later :( )
 ```bash
 python python3 FullPipeLine_n_MCUNET_CONV.py     
 ```
 
-Feel free to change options with --help flags.
 ## Project Structure
 
 All pipeline core functions has been implemented in `pipeline/`
