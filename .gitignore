@@ -1,11 +1,10 @@
-data/
+haute_garonne
 models/*.onnx 
 models/*.pth
 .vscode/
 .python-version
 .venv/
 *.pyc
-haute_garonne/
 train_dataset.pth 
 val_dataset.pth
 
