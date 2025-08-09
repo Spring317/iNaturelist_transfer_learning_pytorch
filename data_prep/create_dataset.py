@@ -58,7 +58,6 @@ class DatasetCreator:
         # dataset = self.create_dataset()
 
         # Shuffle dataset
-        random.seed(42)
         random.shuffle(dataset)
 
         split_index = int(len(dataset) * train_ratio)
@@ -104,8 +103,6 @@ class DatasetCreator:
         with open("config.yaml", "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
         data_path = config["paths"]["src_dataset"]
-
-        data_path = os.path.join(data_path, "Insecta")
         print(f"Using data path: {data_path}")
         # Get species lists
         all_species = class_counts["class_counts_sorted"]
@@ -140,7 +137,7 @@ class DatasetCreator:
         print(f"Speciese_label_map: {speciese_name_map_label}")
         total_other_samples = sum(species["sample_count"] for species in other_species)
         print(f"  All other {len(other_species)} species")
-        print(f"  Total samples: {total_other_samples}")
+        # print(f"  Total samples: {total_other_samples}")
         print("=" * 70)
 
         # Process selected n species as main classes (0, 1, 2, ..., n-1)
@@ -148,9 +145,8 @@ class DatasetCreator:
             tqdm(selected_species, desc="Processing main classes")
         ):
             class_name = species["class_name"]
-            # change the class_name string to this for the os to read: eg: "haute_garonne/Insecta/Apis\ mellifera/"
             class_path = os.path.join(data_path, f"{class_name}")
-            print(f"Using class path: {class_path}")
+            # print(f"Using class path: {class_path}")
             if os.path.exists(class_path):
                 for sample in os.listdir(class_path):
                     if sample.lower().endswith((".jpg", ".jpeg", ".png", ".bmp")):
@@ -206,21 +202,8 @@ class DatasetCreator:
         # print("Label counts:", label_counts)
         # print(f"Dataset: {dataset}")
         train, val = self.split_dataset(dataset)
-        print(f"Training set size: {len(train)} samples")
-        print(f"Validation set size: {len(val)} samples")
+        # print(f"Training set size: {len(train)} samples")
+        # print(f"Validation set size: {len(val)} samples")
 
         weights = self.calculate_weight_samples(label_counts)
         return dataset, train, val, weights, speciese_name_map_label
-
-
-# if __name__ == "__main__":
-#     creator = DatasetCreator()
-#     dataset, train, val, weights, speciese_name_map_label = creator.create_dataset(
-#         start_rank=0
-#     )
-#     print("Dataset created successfully!")
-#     print(f"Total samples: {len(dataset)}")
-#     print(f"Training samples: {len(train)}")
-#     print(f"Validation samples: {len(val)}")
-#     print(f"Weights: {weights}")
-#     print(f"Species to label mapping: {speciese_name_map_label}")
