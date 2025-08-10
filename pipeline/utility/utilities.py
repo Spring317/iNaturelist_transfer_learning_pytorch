@@ -342,6 +342,16 @@ def get_support_list(
     return total_support_list
 
 
+def calculate_FN(
+    gt: str, pred: str, small_species_labels: List[Dict[int, str]], small: int
+):
+    """Calculate False Negative of the pipeline (model errors)"""
+    species_labels = small_species_labels[small]
+    if gt not in species_labels.values() and pred in species_labels.values():
+        return True
+    return False
+
+
 def generate_report(
     all_labels: List[int],
     all_preds: List[int],

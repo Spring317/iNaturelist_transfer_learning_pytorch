@@ -18,6 +18,7 @@ from pipeline.utility import (
     get_support_list,
     manifest_generator_wrapper,
     preprocess_eval_opencv,
+    calculate_FN,
 )
 import time
 import statistics as stats
@@ -91,9 +92,9 @@ class NFullPipelineMonteCarloSimulation:
         self.global_total_support_list = global_total_support_list
         self.global_labels_images: Dict[int, List[str]] = defaultdict(list)
 
-        for image_path, species_id in self.global_data_manifests:
-            # print(f"Type of sample: {type(sample)}")
-            self.global_labels_images[species_id].append(image_path)
+        # for image_path, species_id in self.global_data_manifests:
+        #     # print(f"Type of sample: {type(sample)}")
+        #     self.global_labels_images[species_id].append(image_path)
 
         self.global_total_images = sum(
             len(imgs) for imgs in self.global_labels_images.values()
@@ -306,7 +307,6 @@ class NFullPipelineMonteCarloSimulation:
         # create start counter:
         start = time.perf_counter()
         for small in range(self.number_of_small_models):
-            # while small < self.number_of_small_models:
             small_result = self._infer_one(
                 ModelType.SMALL_MODEL, image_path, self.sessions[small]
             )
@@ -358,90 +358,53 @@ class NFullPipelineMonteCarloSimulation:
         # model_type: str = "both",
     ) -> None:
         other_preds = 0
-        all_true, all_pred = [], []
-
+        y_true: List[int] = []
+        y_pred: List[int] = []
+        FNs = {}
+        for i in range(self.number_of_small_models):
+            FNs[i] = 0
         latencies = {}
         for i in range(self.number_of_small_models + 1):
             latencies[i] = []
         time_per_image = []
-        for run in range(num_runs):
-            y_true: List[int] = []
-            y_pred: List[int] = []
 
-            # sampled_species = self._create_stratified_weighted_sample(sample_size)
-            # print(f"Sampled species: {sampled_species}")
-            for image_path in tqdm(self.small_data_manifests):
-                start = time.perf_counter()
-                result = self.infer_with_routing(image_path, 0)
-                end = time.perf_counter()
+        for image_path in tqdm(self.small_data_manifests):
+            start = time.perf_counter()
+            result = self.infer_with_routing(image_path, 0)
+            end = time.perf_counter()
 
-                if result is None:
-                    print(f"Model returns no result for {image_path}")
-                    continue
-                if result is not None:
-                    pred, gt, small_counter, latency = result
-                    # print(
-                    #     f"Prediction: {pred}, Ground Truth: {gt}, Small Model Counter: {small_counter}"
-                    # )
-                    latencies[small_counter].append(latency)
-                    time_per_image.append(end - start)
+            if result is None:
+                print(f"Model returns no result for {image_path}")
+                continue
 
-                    # convert gt to gt number:
+            if result is not None:
+                pred, gt, small_counter, latency = result
+                latencies[small_counter].append(latency)
+                time_per_image.append(end - start)
+                if small_counter < self.number_of_small_models:
+                    if calculate_FN(gt, pred, self.small_species_labels, small_counter):
+                        FNs[small_counter] += 1
 
-                    gt_int = [
-                        key
-                        for key, val in self.global_species_labels.items()
-                        if val == gt
-                    ]
+                gt_int = [
+                    key for key, val in self.global_species_labels.items() if val == gt
+                ]
 
-                    pred_int = [
-                        key
-                        for key, val in self.global_species_labels.items()
-                        if val == pred
-                    ]
+                pred_int = [
+                    key
+                    for key, val in self.global_species_labels.items()
+                    if val == pred
+                ]
 
-                    # print(f"Ground truth {gt_int}")
-                    # print(f"prediction: {pred_int}")
-                    y_true.append(gt_int[0])
-                    y_pred.append(pred_int[0])
-                #     # if small_counter < self.number_of_small_models:
-                #     # Save the small model prediction and the small_counter into the small_species_preds dict
-                #     # self.small_species_preds[small_counter] = pred
-                #
-                #     # global_pred = self._translate_prediction_to_global_label(
-                #     #     pred, ModelType.SMALL_MODEL, small_counter
-                #     # )
-                #     # # print(
-                #     # #     f"Prediction: {global_pred}, Ground Truth: {gt}, Small Model Counter: {small_counter}"
-                #     # # )
-                #     #
-                #     # y_true.append(gt)
-                #     # y_pred.append(global_pred)
-                #     # #
-                #     # # else:
-                #     # self.global_species_preds.append(pred)
-                #     # global_pred = self._translate_prediction_to_global_label(
-                #     #     pred, ModelType.BIG_MODEL
-                #     # )
-                #     # y_true.append(gt)
-                #     # y_pred.append(global_pred)
-                #
-                # Map the result with the global species labels for evaluations
-                # if result is not None:
-                #     ground_truth, pred, is_other_small_model, timer = result
-                #     other_preds += is_other_small_model
-                #     y_true.append(ground_truth)
-                #     y_pred.append(pred)
-            all_true.extend(y_true)
-            all_pred.extend(y_pred)
+                y_true.append(gt_int[0])
+                y_pred.append(pred_int[0])
 
         total_support_list = get_support_list(
             self.global_total_support_list, self.global_species_names
         )
-        # num_pred_outside_global = sum(
-        #     [1 for pred in all_pred if pred == self.not_belong_to_global_idx]
-        # )
-        # print(f"Total 'Other' prediction by small model: {other_preds}")
+        for i in range(self.number_of_small_models):
+            FNs[i] /= 1000
+
+        print(f"Total 'Other' prediction by small model: {other_preds}")
         # print(f"Total prediction outside the test set: {num_pred_outside_global}")
 
         print(f"Number calls of each class: {self.class_calls}")
@@ -450,9 +413,9 @@ class NFullPipelineMonteCarloSimulation:
         print(
             f"Correct predictions: {self.correct_predictions}/{len(self.small_data_manifests)}"
         )
-        print(
-            f"accuracy: {self.correct_predictions / len(self.small_data_manifests):.4f}"
-        )
+        # print(
+        #     f"accuracy: {self.correct_predictions / len(self.small_data_manifests):.4f}"
+        # )
         print(f"Average time per image: {stats.fmean(time_per_image) * 1000:.2f} ms")
         print(f"Throughput: {1.0 / stats.fmean(time_per_image):.2f} fps")
         # total_support_list.append(num_pred_outside_global)
@@ -464,11 +427,13 @@ class NFullPipelineMonteCarloSimulation:
             f"Average time per image with large model: {self.number_of_small_models} {stats.fmean(latencies[self.number_of_small_models]) * 1000:.2f} ms"
         )
         if save_path:
-            accuracy = accuracy_score(all_true, all_pred)
+            accuracy = accuracy_score(y_true, y_pred)
             print(f"Accuracy: {accuracy:.4f}")
+            print(f"False negative rate of model: {FNs}")
+
             df = generate_report(
-                all_true,
-                all_pred,
+                y_true,
+                y_pred,
                 self.global_species_names,
                 total_support_list,
                 float(accuracy),
@@ -550,6 +515,7 @@ if __name__ == "__main__":
         default=13,
         help="Number of dominant classes used",
     )
+    # arg_parser.add_argument("--save_path", type=str, help="Evaluation directory")
     args = arg_parser.parse_args()
 
     threshold = args.threshold
@@ -570,32 +536,26 @@ if __name__ == "__main__":
     sample_count = 0
     dominant_threshold = 0.6
     test_image_path = []
-    # for i in range(0, n, num_of_dominant_classes):
-    small_image_dats, _, _, _, small_species_label = data_creators.create_dataset(0)
-    print(f"small species label: {small_species_label}")
+    for i in range(0, n, num_of_dominant_classes):
+        small_image_dats, _, _, _, small_species_label = data_creators.create_dataset(i)
+        # print(f"small species label: {small_species_label}")
 
-    for d in small_image_dats:
-        label = d["label"]
-        label_counts[label] = label_counts.get(label, 0) + 1
+        for d in small_image_dats:
+            label = d["label"]
+            label_counts[label] = label_counts.get(label, 0) + 1
 
-    print(label_counts)
+        print(label_counts)
 
-    # save image path in small image dats into a json file
-    for image_label_path in small_image_dats:
-        # if sample_count < 1000:
-        test_image_path.append(image_label_path["image"])
-        if image_label_path["label"] < num_of_dominant_classes:
-            counter += 1
-        sample_count += 1
+        # save image path in small image dats into a json file
+        for image_label_path in small_image_dats:
+            if sample_count < 1000:
+                test_image_path.append(image_label_path["image"])
+                if image_label_path["label"] < num_of_dominant_classes:
+                    counter += 1
+                sample_count += 1
 
         small_image_data.append(small_image_dats)
         small_species_labels.append(small_species_label)
-    # global_data_creators = DatasetCreator(number_of_dominant_classes=143)
-    #
-    # global_image_data, _, _, _, global_species_labels = (
-    #     global_data_creators.create_dataset(0)
-    # )
-    # print(f"Global image manifest: {global_image_data}")
     print(f"counter: {counter}")
     print(f"Dataset Ratio: {counter / len(test_image_path)}")
     # print(f"Typ e of global image data: {type(global_image_data)}")
@@ -612,13 +572,7 @@ if __name__ == "__main__":
         f"mcunets/mcunet-in2_haute_garonne_{dominant_threshold}_{i}_best.onnx"
         for i in range(0, n, num_of_dominant_classes)
     ]
-    # print(f"Total small model paths: {len(small_model_paths)}")
     big_model_path = "models/convnext_full_insect_best.onnx"
-    # print(f"small_species_labels: {small_species_labels}")
-    # big_model_labels = global_species_labels.copy()
-    # Replace the 'Other' label with the the actual name of the species:
-    # big_model_labels[143] = "Evergestis pallidata"
-    # print(f"gloabl species labels: {global_species_labels}")
     pipeline = NFullPipelineMonteCarloSimulation(
         small_model_paths,
         big_model_path,
@@ -634,4 +588,4 @@ if __name__ == "__main__":
         # providers=["CUDAExecutionProvider", "CUDAExecutionProvider"],
     )
 
-    pipeline.run(1, 1000, "./baseline_benchmark")
+    pipeline.run(1, 1000, args.save_path)
