@@ -582,11 +582,11 @@ if __name__ == "__main__":
 
     # save image path in small image dats into a json file
     for image_label_path in small_image_dats:
-        if sample_count <= 1000:
-            test_image_path.append(image_label_path["image"])
-            if image_label_path["label"] < num_of_dominant_classes:
-                counter += 1
-            sample_count += 1
+        # if sample_count < 1000:
+        test_image_path.append(image_label_path["image"])
+        if image_label_path["label"] < num_of_dominant_classes:
+            counter += 1
+        sample_count += 1
 
         small_image_data.append(small_image_dats)
         small_species_labels.append(small_species_label)
