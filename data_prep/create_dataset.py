@@ -88,6 +88,7 @@ class DatasetCreator:
             - speciese_name_map_label (dict): mapping of class labels to species names
 
         """
+        random.seed(42)
         if not os.path.exists(self.class_counter_path):
             raise FileNotFoundError(
                 f"Class counts file not found: {self.class_counter_path}"
