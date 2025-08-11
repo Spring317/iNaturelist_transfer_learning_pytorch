@@ -569,7 +569,7 @@ if __name__ == "__main__":
         big_species_labels = {int(k): v for k, v in big_species_labels.items()}
     # Create a list of small model paths
     small_model_paths = [
-        f"mcunets/mcunet-in2_haute_garonne_{dominant_threshold}_{i}_best.onnx"
+        f"/home/quydx/tinyml-trainer/models/mcunet-in2_haute_garonne_{dominant_threshold}_{i}_best.onnx"
         for i in range(0, n, num_of_dominant_classes)
     ]
     big_model_path = "models/convnext_full_insect_best.onnx"

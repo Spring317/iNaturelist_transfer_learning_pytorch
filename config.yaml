@@ -4,7 +4,7 @@ global:
   overwrite: true
 
 paths:
-  src_dataset: "./test_sets/DI1/Insecta"
+  src_dataset: "./test_sets/DI2/Insecta"
   dst_dataset: "./haute_garonne"
   web_crawl_output_json: "./output/haute_garonne.json"
   output_dir: "./output"
