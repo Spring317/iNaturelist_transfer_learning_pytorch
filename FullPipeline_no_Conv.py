@@ -318,7 +318,13 @@ class NFullPipelineMonteCarloSimulation:
             # self.class_calls[small_pred] += 1
             if small_pred == self.small_other_labels[small]:
                 # print("try-next-small-model")
-                # small += 1
+                if small == self.number_of_small_models - 1:
+                    end = time.perf_counter()
+                    small_species_label = "Evergestis pallidata"
+                    if small_species_label == gt_path:
+                        self.correct_predictions += 1
+
+                    return small_species_label, gt_path, small, end - start  # type: ignore
                 # next iteration:
                 continue
             else:
@@ -334,21 +340,21 @@ class NFullPipelineMonteCarloSimulation:
                     self.correct_predictions += 1
                 # Translate the small model prediction to the global species label
                 return small_species_label, gt_path, small, end - start  # type: ignore
-        #
+
         # small += 1
         # print(f"All small models returned 'Other', running big model for {image_path}")
-        big_result = self._infer_one(ModelType.BIG_MODEL, image_path)
+        # big_result = self._infer_one(ModelType.BIG_MODEL, image_path)
 
         # print(f"ground truth path: {gt_path}"
-        if big_result is None:
-            print(f"Big model returns no result for {image_path}")
-            return None
-        end = time.perf_counter()
-        self.big_model_call += 1
-        big_species_label = self.global_species_labels.get(big_result[0], None)
-        if big_species_label == gt_path:
-            self.correct_predictions += 1
-        return big_species_label, gt_path, self.number_of_small_models, end - start  # type: ignore
+        # if big_result is None:
+        #     print(f"Big model returns no result for {image_path}")
+        #     return None
+        # end = time.perf_counter()
+        # self.big_model_call += 1
+        # big_species_label = self.global_species_labels.get(big_result[0], None)
+        # if big_species_label == gt_path:
+        #     self.correct_predictions += 1
+        # return big_species_label, gt_path, self.number_of_small_models, end - start  # type: ignore
 
     def run(
         self,
@@ -413,9 +419,9 @@ class NFullPipelineMonteCarloSimulation:
         print(
             f"Correct predictions: {self.correct_predictions}/{len(self.small_data_manifests)}"
         )
-        # print(
-        #     f"accuracy: {self.correct_predictions / len(self.small_data_manifests):.4f}"
-        # )
+        print(
+            f"accuracy: {self.correct_predictions / len(self.small_data_manifests):.4f}"
+        )
         print(f"Average time per image: {stats.fmean(time_per_image) * 1000:.2f} ms")
         print(f"Throughput: {1.0 / stats.fmean(time_per_image):.2f} fps")
         # total_support_list.append(num_pred_outside_global)
@@ -423,9 +429,9 @@ class NFullPipelineMonteCarloSimulation:
             print(
                 f"Average time per image with small model {i}: {stats.fmean(latencies[i]) * 1000:.2f} ms"
             )
-        print(
-            f"Average time per image with large model: {self.number_of_small_models} {stats.fmean(latencies[self.number_of_small_models]) * 1000:.2f} ms"
-        )
+        # print(
+        #     f"Average time per image with large model: {self.number_of_small_models} {stats.fmean(latencies[self.number_of_small_models]) * 1000:.2f} ms"
+        # )
         if save_path:
             accuracy = accuracy_score(y_true, y_pred)
             print(f"Accuracy: {accuracy:.4f}")
@@ -569,7 +575,7 @@ if __name__ == "__main__":
         big_species_labels = {int(k): v for k, v in big_species_labels.items()}
     # Create a list of small model paths
     small_model_paths = [
-        f"/home/quydx/tinyml-trainer/models/mcunet-in2_haute_garonne_{dominant_threshold}_{i}_best.onnx"
+        f"models/mcunet-in2_haute_garonne_{dominant_threshold}_{i}_best.onnx"
         for i in range(0, n, num_of_dominant_classes)
     ]
     big_model_path = "models/convnext_full_insect_best.onnx"
