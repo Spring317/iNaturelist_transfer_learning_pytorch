@@ -12,7 +12,7 @@ import scipy.special
 from onnxruntime import InferenceSession
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
-
+import yaml
 from pipeline.utility import (
     generate_report,
     get_support_list,
@@ -25,6 +25,7 @@ import statistics as stats
 import argparse
 from data_prep.data_loader import DatasetCreator
 from torch import Tensor
+from create_testset import create_testset
 
 
 class ModelType(Enum):
@@ -56,7 +57,6 @@ class NFullPipelineMonteCarloSimulation:
         self,
         small_model_path: List[str],
         big_model_path: str,
-        small_data_manifests: List[str],
         global_data_manifests: List[Tuple[str, int]],
         global_species_labels: Dict[int, str],
         global_total_support_list: Dict[str, int],
@@ -77,7 +77,6 @@ class NFullPipelineMonteCarloSimulation:
             ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         )
         session_options.intra_op_num_threads = 4
-        self.small_data_manifests = small_data_manifests
         self.big_session = ort.InferenceSession(
             big_model_path, session_options, providers=[self.providers[1]]
         )
@@ -374,7 +373,7 @@ class NFullPipelineMonteCarloSimulation:
             latencies[i] = []
         time_per_image = []
 
-        for image_path in tqdm(self.small_data_manifests):
+        for image_path, _ in tqdm(self.global_data_manifests):
             start = time.perf_counter()
             result = self.infer_with_routing(image_path, 0)
             end = time.perf_counter()
@@ -415,12 +414,14 @@ class NFullPipelineMonteCarloSimulation:
 
         print(f"Number calls of each class: {self.class_calls}")
         print(f"Small model calls: {self.small_model_call}")
-        print(f"Big model call: {self.big_model_call}/{len(self.small_data_manifests)}")
         print(
-            f"Correct predictions: {self.correct_predictions}/{len(self.small_data_manifests)}"
+            f"Big model call: {self.big_model_call}/{len(self.global_data_manifests)}"
         )
         print(
-            f"accuracy: {self.correct_predictions / len(self.small_data_manifests):.4f}"
+            f"Correct predictions: {self.correct_predictions}/{len(self.global_data_manifests)}"
+        )
+        print(
+            f"accuracy: {self.correct_predictions / len(self.global_data_manifests):.4f}"
         )
         print(f"Average time per image: {stats.fmean(time_per_image) * 1000:.2f} ms")
         print(f"Throughput: {1.0 / stats.fmean(time_per_image):.2f} fps")
@@ -565,10 +566,16 @@ if __name__ == "__main__":
     print(f"counter: {counter}")
     print(f"Dataset Ratio: {counter / len(test_image_path)}")
     # print(f"Typ e of global image data: {type(global_image_data)}")
-    global_image_data, _, _, global_species_labels, global_species_composition = (
+    _, _, _, global_species_labels, global_species_composition = (
         manifest_generator_wrapper(1.0)
     )
     # dump to json file
+    with open("config.yaml", "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+    data_path = config["paths"]["src_dataset"]
+
+    global_image_data = create_testset(data_path)
+    print(f"Using data path: {data_path}")
     print(f"global species label: {global_species_labels}")
     with open("haute_garonne/dataset_species_labels.json") as full_bird_insect_labels:
         big_species_labels = json.load(full_bird_insect_labels)
@@ -582,7 +589,6 @@ if __name__ == "__main__":
     pipeline = NFullPipelineMonteCarloSimulation(
         small_model_paths,
         big_model_path,
-        test_image_path,
         global_image_data,
         global_species_labels,
         global_species_composition,

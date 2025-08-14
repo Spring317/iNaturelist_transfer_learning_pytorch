@@ -4,7 +4,6 @@ import random
 from collections import defaultdict
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
-from cv2.detail import resultRoi
 import numpy as np
 import onnxruntime as ort
 import pandas as pd
@@ -12,7 +11,7 @@ import scipy.special
 from onnxruntime import InferenceSession
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
-
+import yaml
 from pipeline.utility import (
     generate_report,
     get_support_list,
@@ -24,7 +23,7 @@ import time
 import statistics as stats
 import argparse
 from data_prep.data_loader import DatasetCreator
-from torch import Tensor
+from create_testset import create_testset
 
 
 class ModelType(Enum):
@@ -141,6 +140,9 @@ class NFullPipelineMonteCarloSimulation:
         ]
         self.big_model_call: int = 0
         self.correct_predictions: int = 0
+        self.FPs = {}
+        for i in range(self.number_of_small_models):
+            self.FPs[i] = 0
 
     def _get_small_model_other_label(self, small_species_lab) -> int:
         """
@@ -318,20 +320,24 @@ class NFullPipelineMonteCarloSimulation:
             # self.class_calls[small_pred] += 1
             if small_pred == self.small_other_labels[small]:
                 # print("try-next-small-model")
-                # small += 1
+                self.small_model_call[small] += 1
+                small += 1
                 # next iteration:
                 continue
             else:
                 end = time.perf_counter()
                 # print("Predict complete, next image")
-                self.small_model_call[small] += 1
                 # get the name of the predicted species:
                 small_species_label = self.small_species_labels[small].get(
                     small_pred, None
                 )
+                self.small_model_call[small] += 1
                 # print(f"ground truth path: {gt_path}")
                 if small_species_label == gt_path:
                     self.correct_predictions += 1
+                else:
+                    self.FPs[small] += 1
+
                 # Translate the small model prediction to the global species label
                 return small_species_label, gt_path, small, end - start  # type: ignore
         #
@@ -360,15 +366,15 @@ class NFullPipelineMonteCarloSimulation:
         other_preds = 0
         y_true: List[int] = []
         y_pred: List[int] = []
-        FNs = {}
+        FPs = {}
         for i in range(self.number_of_small_models):
-            FNs[i] = 0
+            FPs[i] = 0
         latencies = {}
         for i in range(self.number_of_small_models + 1):
             latencies[i] = []
         time_per_image = []
 
-        for image_path in tqdm(self.small_data_manifests):
+        for image_path, _ in tqdm(self.global_data_manifests):
             start = time.perf_counter()
             result = self.infer_with_routing(image_path, 0)
             end = time.perf_counter()
@@ -383,7 +389,7 @@ class NFullPipelineMonteCarloSimulation:
                 time_per_image.append(end - start)
                 if small_counter < self.number_of_small_models:
                     if calculate_FN(gt, pred, self.small_species_labels, small_counter):
-                        FNs[small_counter] += 1
+                        FPs[small_counter] += 1
 
                 gt_int = [
                     key for key, val in self.global_species_labels.items() if val == gt
@@ -401,17 +407,19 @@ class NFullPipelineMonteCarloSimulation:
         total_support_list = get_support_list(
             self.global_total_support_list, self.global_species_names
         )
-        for i in range(self.number_of_small_models):
-            FNs[i] /= 1000
+        # for i in range(self.number_of_small_models):
+        #     FNs[i] /= 1000
 
         print(f"Total 'Other' prediction by small model: {other_preds}")
         # print(f"Total prediction outside the test set: {num_pred_outside_global}")
 
         print(f"Number calls of each class: {self.class_calls}")
         print(f"Small model calls: {self.small_model_call}")
-        print(f"Big model call: {self.big_model_call}/{len(self.small_data_manifests)}")
         print(
-            f"Correct predictions: {self.correct_predictions}/{len(self.small_data_manifests)}"
+            f"Big model call: {self.big_model_call}/{len(self.global_data_manifests)}"
+        )
+        print(
+            f"Correct predictions: {self.correct_predictions}/{len(self.global_data_manifests)}"
         )
         # print(
         #     f"accuracy: {self.correct_predictions / len(self.small_data_manifests):.4f}"
@@ -426,10 +434,11 @@ class NFullPipelineMonteCarloSimulation:
         print(
             f"Average time per image with large model: {self.number_of_small_models} {stats.fmean(latencies[self.number_of_small_models]) * 1000:.2f} ms"
         )
+        print(f"Error of each small models: {self.FPs}")
         if save_path:
             accuracy = accuracy_score(y_true, y_pred)
             print(f"Accuracy: {accuracy:.4f}")
-            print(f"False negative rate of model: {FNs}")
+            print(f"False positive rate of model: {FPs}")
 
             df = generate_report(
                 y_true,
@@ -537,39 +546,48 @@ if __name__ == "__main__":
     dominant_threshold = 0.6
     test_image_path = []
     for i in range(0, n, num_of_dominant_classes):
-        small_image_dats, _, _, _, small_species_label = data_creators.create_dataset(i)
-        # print(f"small species label: {small_species_label}")
-
-        for d in small_image_dats:
-            label = d["label"]
-            label_counts[label] = label_counts.get(label, 0) + 1
-
-        print(label_counts)
-
-        # save image path in small image dats into a json file
-        for image_label_path in small_image_dats:
-            if sample_count < 1000:
+        if i == 0:
+            small_image_dats, _, _, _, small_species_label = (
+                data_creators.create_dataset(i)
+            )
+            # print(f"small species label: {small_species_label}")
+            for d in small_image_dats:
+                label = d["label"]
+                label_counts[label] = label_counts.get(label, 0) + 1
+            for image_label_path in small_image_dats:
+                # if sample_count < 1000:
                 test_image_path.append(image_label_path["image"])
                 if image_label_path["label"] < num_of_dominant_classes:
                     counter += 1
                 sample_count += 1
 
-        small_image_data.append(small_image_dats)
+            print(label_counts)
+
+        _, _, _, _, small_species_label = data_creators.create_dataset(i)
+
+        # save image path in small image dats into a json file
+
         small_species_labels.append(small_species_label)
     print(f"counter: {counter}")
     print(f"Dataset Ratio: {counter / len(test_image_path)}")
     # print(f"Typ e of global image data: {type(global_image_data)}")
-    global_image_data, _, _, global_species_labels, global_species_composition = (
+    _, _, _, global_species_labels, global_species_composition = (
         manifest_generator_wrapper(1.0)
     )
+    with open("config.yaml", "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+    data_path = config["paths"]["src_dataset"]
+    print(f"Using data path: {data_path}")
+
+    global_image_data = create_testset(data_path)
+    print(f"Global image data: {len(global_image_data)}")
     # dump to json file
-    print(f"global species label: {global_species_labels}")
     with open("haute_garonne/dataset_species_labels.json") as full_bird_insect_labels:
         big_species_labels = json.load(full_bird_insect_labels)
         big_species_labels = {int(k): v for k, v in big_species_labels.items()}
     # Create a list of small model paths
     small_model_paths = [
-        f"/home/quydx/tinyml-trainer/models/mcunet-in2_haute_garonne_{dominant_threshold}_{i}_best.onnx"
+        f"models/mcunet-in2_haute_garonne_{dominant_threshold}_{i}_best.onnx"
         for i in range(0, n, num_of_dominant_classes)
     ]
     big_model_path = "models/convnext_full_insect_best.onnx"
