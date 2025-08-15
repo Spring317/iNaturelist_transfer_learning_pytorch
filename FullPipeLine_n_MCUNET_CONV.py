@@ -144,6 +144,10 @@ class NFullPipelineMonteCarloSimulation:
         for i in range(self.number_of_small_models):
             self.FPs[i] = 0
 
+        self.small_model_other_call = {}
+        for i in range(self.number_of_small_models):
+            self.small_model_other_call[i] = 0
+
     def _get_small_model_other_label(self, small_species_lab) -> int:
         """
         Get the label for 'Other' species in the small model.
@@ -319,8 +323,7 @@ class NFullPipelineMonteCarloSimulation:
             small_pred, _ = small_result
             # self.class_calls[small_pred] += 1
             if small_pred == self.small_other_labels[small]:
-                # print("try-next-small-model")
-                self.small_model_call[small] += 1
+                self.small_model_other_call[small] += 1
                 small += 1
                 # next iteration:
                 continue
@@ -331,6 +334,7 @@ class NFullPipelineMonteCarloSimulation:
                 small_species_label = self.small_species_labels[small].get(
                     small_pred, None
                 )
+
                 self.small_model_call[small] += 1
                 # print(f"ground truth path: {gt_path}")
                 if small_species_label == gt_path:
@@ -415,6 +419,7 @@ class NFullPipelineMonteCarloSimulation:
 
         print(f"Number calls of each class: {self.class_calls}")
         print(f"Small model calls: {self.small_model_call}")
+        print(f"Number of other small model return:{self.small_model_other_call}")
         print(
             f"Big model call: {self.big_model_call}/{len(self.global_data_manifests)}"
         )
@@ -435,6 +440,10 @@ class NFullPipelineMonteCarloSimulation:
             f"Average time per image with large model: {self.number_of_small_models} {stats.fmean(latencies[self.number_of_small_models]) * 1000:.2f} ms"
         )
         print(f"Error of each small models: {self.FPs}")
+        error_rates = []
+        for err, tol in zip(self.FPs.values(), self.small_model_call.values()):
+            error_rates.append(err / tol)
+        print(f"Error rate of each models: {error_rates}")
         if save_path:
             accuracy = accuracy_score(y_true, y_pred)
             print(f"Accuracy: {accuracy:.4f}")

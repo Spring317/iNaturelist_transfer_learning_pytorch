@@ -54,7 +54,7 @@ def count_samples_per_class(dataset_path: str) -> Tuple[Dict[str, int], int]:
 
 
 def save_class_counts_sorted_json(
-    class_counts: Dict[int, int], output_file: str
+    class_counts: Dict[str, int], output_file: str
 ) -> Dict:
     """
     Save class counts to a sorted JSON file with statistics
@@ -88,3 +88,11 @@ def save_class_counts_sorted_json(
     print(f"\n💾 Results saved to: {output_file}")
 
     return output_data
+
+
+class_counts, total_samples = count_samples_per_class(
+    "/home/quydx/iNaturelist_transfer_learning_pytorch/test/"
+)
+save_class_counts_sorted_json(
+    class_counts=class_counts, output_file="test_count_sorted.json"
+)

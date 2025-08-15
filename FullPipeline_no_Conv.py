@@ -140,6 +140,10 @@ class NFullPipelineMonteCarloSimulation:
         ]
         self.big_model_call: int = 0
         self.correct_predictions: int = 0
+        self.small_model_error = {}
+        for i in range(self.number_of_small_models):
+            self.small_model_error[i] = 0
+        time_per_image = []
 
     def _get_small_model_other_label(self, small_species_lab) -> int:
         """
@@ -322,7 +326,8 @@ class NFullPipelineMonteCarloSimulation:
                     small_species_label = "Evergestis pallidata"
                     if small_species_label == gt_path:
                         self.correct_predictions += 1
-
+                    else:
+                        self.small_model_error[small] += 1
                     return small_species_label, gt_path, small, end - start  # type: ignore
                 # next iteration:
                 continue
@@ -433,6 +438,7 @@ class NFullPipelineMonteCarloSimulation:
         # print(
         #     f"Average time per image with large model: {self.number_of_small_models} {stats.fmean(latencies[self.number_of_small_models]) * 1000:.2f} ms"
         # )
+        print(f"Small model error (exclude others): {self.small_model_error}")
         if save_path:
             accuracy = accuracy_score(y_true, y_pred)
             print(f"Accuracy: {accuracy:.4f}")
